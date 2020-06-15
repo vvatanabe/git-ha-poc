@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package smart;
+
+option go_package = "github.com/vvatanabe/git-ha-poc/proto/smart";
+
+message Repository {
+  string user = 1;
+  string repo = 2;
+}
+
+message UploadPackRequest {
+  Repository repository = 1;
+  bytes data = 2;
+}
+
+message UploadPackResponse {
+  bytes data = 1;
+}
+
+message ReceivePackRequest {
+  Repository repository = 1;
+  bytes data = 2;
+}
+
+message ReceivePackResponse {
+  bytes data = 1;
+}
+
+enum Service {
+  UNKNOWN = 0;
+  UPLOAD_PACK = 1;
+  RECEIVE_PACK = 2;
+}
+
+message InfoRefsRequest {
+  Repository repository = 1;
+  Service service = 2;
+  bytes data = 3;
+}
+
+message InfoRefsResponse {
+  bytes data = 1;
+}
+
+service SmartProtocolService {
+  rpc PostUploadPack (UploadPackRequest) returns (stream UploadPackResponse);
+  rpc PostReceivePack (stream ReceivePackRequest) returns (ReceivePackResponse);
+  rpc GetInfoRefs (InfoRefsRequest) returns (InfoRefsResponse);
+}
