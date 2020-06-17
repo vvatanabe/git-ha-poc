@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
@@ -50,9 +52,12 @@ func main() {
 			transfer.GitReceivePack(context.Background(), user, repo, rw, r)
 		})
 
-	r.Path("/{user}/{repo}.git/info/refs").Methods(http.MethodPost).
-		HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-
+	r.Path("/{user}/{repo}.git/info/refs").Methods(http.MethodGet).
+		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			vars := mux.Vars(r)
+			user := vars["user"]
+			repo := vars["repo"]
+			transfer.GetInfoRefs(context.Background(), user, repo, rw, r)
 		})
 
 	log.Println("start server on port", port)
@@ -164,6 +169,53 @@ func (t *GitHttpTransfer) GitReceivePack(ctx context.Context, user, repo string,
 
 	rw.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", receivePack))
 	rw.WriteHeader(http.StatusOK)
+}
+
+func (t *GitHttpTransfer) GetInfoRefs(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+
+	serviceName := getServiceType(r)
+	var service pbSmart.Service
+	switch serviceName {
+	case uploadPack:
+		service = pbSmart.Service_UPLOAD_PACK
+	case receivePack:
+		service = pbSmart.Service_RECEIVE_PACK
+
+	}
+
+	infoRefs, err := t.client.GetInfoRefs(ctx, &pbSmart.InfoRefsRequest{
+		Repository: &pbSmart.Repository{
+			User: user,
+			Repo: repo,
+		},
+		Service: service,
+	})
+
+	if err != nil {
+		RenderNotFound(rw)
+		return
+	}
+
+	rw.Header().Set("Expires", "Fri, 01 Jan 1980 00:00:00 GMT")
+	rw.Header().Set("Pragma", "no-cache")
+	rw.Header().Set("Cache-Control", "no-cache, max-age=0, must-revalidate")
+	rw.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-advertisement", serviceName))
+	rw.WriteHeader(http.StatusOK)
+
+	str := "# service=git-" + serviceName + "\n"
+	s := fmt.Sprintf("%04s", strconv.FormatInt(int64(len(str)+4), 16))
+	rw.Write([]byte(s + str))
+	rw.Write([]byte("0000"))
+
+	rw.Write(infoRefs.Data)
+}
+
+func getServiceType(req *http.Request) string {
+	serviceType := req.FormValue("service")
+	if has := strings.HasPrefix(serviceType, "git-"); !has {
+		return ""
+	}
+	return strings.Replace(serviceType, "git-", "", 1)
 }
 
 func RenderMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
