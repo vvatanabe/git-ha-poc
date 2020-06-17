@@ -1,5 +1,7 @@
 verbose: true
 port: 50051
 routes:
+  - match:  /repository.RepositoryService
+    addr: tadpole:50051
   - match: /smart.SmartProtocolService
     addr: tadpole:50051
