@@ -1,0 +1,5 @@
+verbose: true
+port: 50051
+routes:
+  - match: /smart.SmartProtocolService
+    addr: tadpole:50051
