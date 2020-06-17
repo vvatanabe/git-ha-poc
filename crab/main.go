@@ -180,7 +180,6 @@ func (t *GitHttpTransfer) GetInfoRefs(ctx context.Context, user, repo string, rw
 		service = pbSmart.Service_UPLOAD_PACK
 	case receivePack:
 		service = pbSmart.Service_RECEIVE_PACK
-
 	}
 
 	infoRefs, err := t.client.GetInfoRefs(ctx, &pbSmart.InfoRefsRequest{
