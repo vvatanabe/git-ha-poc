@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package repository;
+
+option go_package = "github.com/vvatanabe/git-ha-poc/proto/repository";
+
+message CreateRepositoryRequest {
+  string user = 1;
+  string repo = 2;
+}
+
+message CreateRepositoryResponse {
+}
+
+
+service RepositoryService {
+  rpc CreateRepository (CreateRepositoryRequest) returns (CreateRepositoryResponse);
+}

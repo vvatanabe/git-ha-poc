@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
 	"google.golang.org/grpc"
 )
@@ -35,6 +36,9 @@ func main() {
 	}
 	transfer := &GitHttpTransfer{
 		client: pbSmart.NewSmartProtocolServiceClient(conn),
+	}
+	repository := &GitRepository{
+		client: pbRepository.NewRepositoryServiceClient(conn),
 	}
 
 	r := mux.NewRouter()
@@ -63,12 +67,39 @@ func main() {
 			transfer.GetInfoRefs(context.Background(), user, repo, rw, r)
 		})
 
+	r.Path("/{user}/{repo}.git").
+		Methods(http.MethodPost).
+		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			vars := mux.Vars(r)
+			user := vars["user"]
+			repo := vars["repo"]
+			repository.Create(context.Background(), user, repo, rw, r)
+		})
+
 	log.Println("start server on port", port)
 
 	err = http.ListenAndServe(port, r)
 	if err != nil {
 		log.Println("failed to exit serve: ", err)
 	}
+}
+
+type GitRepository struct {
+	client pbRepository.RepositoryServiceClient
+}
+
+func (gr *GitRepository) Create(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+	_, err := gr.client.CreateRepository(ctx, &pbRepository.CreateRepositoryRequest{
+		User: user,
+		Repo: repo,
+	})
+	if err != nil {
+		log.Println("failed to create a repository. ", err.Error())
+		RenderInternalServerError(rw)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+	rw.Write([]byte(fmt.Sprintf("remote url: http://localhost:8080/%s/%s.git", user, repo)))
 }
 
 type GitHttpTransfer struct {
