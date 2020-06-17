@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"os/exec"
 	"path"
 	"syscall"
@@ -24,7 +25,21 @@ func main() {
 		log.Fatalf("failed to listen: %v\n", err)
 	}
 	s := grpc.NewServer()
-	pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{})
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("failed to get user home dir: %v\n", err)
+	}
+	rootPath := path.Join(home, "git", "repositories")
+	err = os.MkdirAll(rootPath, 0644)
+	if err != nil {
+		log.Fatalf("failed to mkdir: %s %v\n", rootPath, err)
+	}
+
+	pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
+		RootPath: rootPath,
+		BinPath:  "/usr/bin/git",
+	})
 	log.Printf("start server on port%s\n", port)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v\n", err)
