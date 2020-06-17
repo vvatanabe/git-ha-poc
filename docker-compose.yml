@@ -1,0 +1,28 @@
+version: '3'
+services:
+  crab:
+    build:
+      context: ./
+      dockerfile: crab/Dockerfile
+    image: git-ha-poc/crab
+    container_name: crab
+    ports:
+      - "8080:8080"
+    environment:
+      - "SWORDFISH_ADDR=swordfish:50051"
+  swordfish:
+    build:
+      context: ./
+      dockerfile: swordfish/Dockerfile
+    image: git-ha-poc/swordfish
+    container_name: swordfish
+    ports:
+      - "50051:50051"
+  tadpole:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole
+    ports:
+      - "50052:50051"

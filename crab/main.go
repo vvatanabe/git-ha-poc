@@ -30,7 +30,7 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[crab] ")
 
-	conn, err := grpc.Dial(os.Getenv("CRAB_SERVICE_ADDR"), grpc.WithInsecure())
+	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("failed to dial: %s", err)
 	}

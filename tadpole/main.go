@@ -32,10 +32,6 @@ func main() {
 		log.Fatalf("failed to get user home dir: %v\n", err)
 	}
 	rootPath := path.Join(home, "git", "repositories")
-	err = os.MkdirAll(rootPath, 0644)
-	if err != nil {
-		log.Fatalf("failed to mkdir: %s %v\n", rootPath, err)
-	}
 
 	pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
 		RootPath: rootPath,
