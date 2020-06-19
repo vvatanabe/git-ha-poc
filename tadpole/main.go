@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"path"
 	"syscall"
+	"time"
 
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
@@ -41,6 +44,10 @@ func main() {
 		RootPath: rootPath,
 		BinPath:  "/usr/bin/git",
 	})
+	pbReplication.RegisterReplicationServiceServer(s, &ReplicationService{
+		RootPath: rootPath,
+		BinPath:  "/usr/bin/git",
+	})
 	log.Printf("start server on port%s\n", port)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v\n", err)
@@ -52,33 +59,80 @@ type ReplicationService struct {
 	BinPath  string
 }
 
-func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *pbReplication.ReplicateRepositoryRequest) (*pbReplication.ReplicateRepositoryResponse, error) {
-	//args := []string{"remote", "add", "origin-xxx", request.RemoteUrl}
-	//cmd := exec.Command(r.BinPath, args...)
-	//cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
-	//err := cmd.Run()
-	//if err != nil {
-	//	return nil, err
-	//}
-	//defer func() {
-	//	args := []string{"remote", "rm", "origin-xxx"}
-	//	cmd := exec.Command(r.BinPath, args...)
-	//	cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
-	//	err := cmd.Run()
-	//	if err != nil {
-	//		// return nil, err
-	//	}
-	//}()
-	//
-	//args := []string{"fetch", "origin", "+refs/heads/*:refs/heads/*"}
-	//cmd := exec.Command(r.BinPath, args...)
-	//cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
-	//cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	//err := cmd.Run()
-	//if err != nil {
-	//	return nil, err
-	//}
+func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *pbReplication.ReplicateRepositoryRequest) (response *pbReplication.ReplicateRepositoryResponse, err error) {
+
+	remoteName := fmt.Sprintf("internal-%s", RandomString(10))
+	remoteURL := fmt.Sprintf("http://%s/%s/%s.git",
+		request.RemoteAddr, request.Repository.User, request.Repository.User)
+	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
+	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		e := removeRemote(r.BinPath, remoteName, repoPath)
+		if e != nil {
+			err = e
+		}
+	}()
+
+	err = fetchInternal(r.BinPath, remoteName, repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	return &pbReplication.ReplicateRepositoryResponse{}, nil
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyz" +
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+var seededRand *rand.Rand = rand.New(
+	rand.NewSource(time.Now().UnixNano()))
+
+func RandomString(length int) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func addRemote(bin, name, url, repoPath string) error {
+	args := []string{"remote", "add", name, url}
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = repoPath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func removeRemote(bin, name, repoPath string) error {
+	args := []string{"remote", "remove", name}
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = repoPath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func fetchInternal(bin, name, repoPath string) error {
+	args := []string{"fetch", name, "+refs/heads/*:refs/heads/*"}
+	cmd := exec.Command(bin, args...)
+	cmd.Dir = repoPath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type RepositoryService struct {

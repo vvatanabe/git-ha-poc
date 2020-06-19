@@ -11,7 +11,7 @@ message Repository {
 
 message ReplicateRepositoryRequest {
   Repository repository = 1;
-  string remote_url = 2;
+  string remote_addr = 2;
 }
 
 message ReplicateRepositoryResponse {
