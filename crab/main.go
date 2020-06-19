@@ -176,25 +176,47 @@ func (t *GitHttpTransfer) GitReceivePack(ctx context.Context, user, repo string,
 		RenderInternalServerError(rw)
 		return
 	}
-	defer stream.CloseAndRecv()
+	defer func() {
+		resp, err := stream.CloseAndRecv()
+		if err != nil {
+			log.Println("failed to close and recv ", err)
+			return
+		}
 
-	buf := make([]byte, 1000*1024)
+		rw.Write(data)
+	}()
+
+	err = stream.Send(&pbSmart.ReceivePackRequest{
+		Repository: &pbSmart.Repository{
+			User: user,
+			Repo: repo,
+		},
+	})
+	if err != nil {
+		RenderInternalServerError(rw)
+		return
+	}
+
+	buf := make([]byte, 32*1024)
+
 	for {
 		n, err := body.Read(buf)
+		if n > 0 {
+			err = stream.Send(&pbSmart.ReceivePackRequest{
+				Repository: &pbSmart.Repository{
+					User: user,
+					Repo: repo,
+				},
+				Data: buf[:n],
+			})
+			if err != nil {
+				RenderInternalServerError(rw)
+				return
+			}
+		}
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			RenderInternalServerError(rw)
-			return
-		}
-		err = stream.Send(&pbSmart.ReceivePackRequest{
-			Repository: &pbSmart.Repository{
-				User: user,
-				Repo: repo,
-			},
-			Data: buf[:n],
-		})
 		if err != nil {
 			RenderInternalServerError(rw)
 			return
