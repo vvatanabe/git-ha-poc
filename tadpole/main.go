@@ -10,10 +10,10 @@ import (
 	"path"
 	"syscall"
 
-	"google.golang.org/grpc"
-
+	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
+	"google.golang.org/grpc"
 )
 
 const port = ":50051"
@@ -47,6 +47,40 @@ func main() {
 	}
 }
 
+type ReplicationService struct {
+	RootPath string
+	BinPath  string
+}
+
+func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *pbReplication.ReplicateRepositoryRequest) (*pbReplication.ReplicateRepositoryResponse, error) {
+	//args := []string{"remote", "add", "origin-xxx", request.RemoteUrl}
+	//cmd := exec.Command(r.BinPath, args...)
+	//cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
+	//err := cmd.Run()
+	//if err != nil {
+	//	return nil, err
+	//}
+	//defer func() {
+	//	args := []string{"remote", "rm", "origin-xxx"}
+	//	cmd := exec.Command(r.BinPath, args...)
+	//	cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
+	//	err := cmd.Run()
+	//	if err != nil {
+	//		// return nil, err
+	//	}
+	//}()
+	//
+	//args := []string{"fetch", "origin", "+refs/heads/*:refs/heads/*"}
+	//cmd := exec.Command(r.BinPath, args...)
+	//cmd.Dir = path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
+	//cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	//err := cmd.Run()
+	//if err != nil {
+	//	return nil, err
+	//}
+	return &pbReplication.ReplicateRepositoryResponse{}, nil
+}
+
 type RepositoryService struct {
 	RootPath string
 	BinPath  string
@@ -76,7 +110,7 @@ func mkDirIfNotExist(path string) error {
 	if IsExistDir(path) {
 		return nil
 	}
-	return os.Mkdir(path, 0755)
+	return os.MkdirAll(path, 0755)
 }
 
 func IsExistDir(path string) bool {
@@ -137,7 +171,7 @@ func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest
 	// so must close it after completing the copy request body to standard input.
 	stdin.Close()
 
-	buf := make([]byte, 1000*1024)
+	buf := make([]byte, 32*1024)
 	for {
 		n, err := stdout.Read(buf)
 		if err != nil {
@@ -161,18 +195,16 @@ func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest
 func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolService_PostReceivePackServer) error {
 
 	c, err := stream.Recv()
-	if err == io.EOF {
-		return nil
-	}
 	if err != nil {
+		log.Println("failed to recv stream first", err)
 		return err
 	}
 
 	repo := c.GetRepository()
-	firstData := c.GetData()
 
 	args := []string{"receive-pack", "--stateless-rpc", "."}
 	cmd := exec.Command(s.BinPath, args...)
+
 	cmd.Dir = s.getAbsolutePath(path.Join(repo.User, repo.Repo+".git"))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -200,36 +232,98 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 	}
 	defer cmd.Wait()
 
-	if _, err := stdin.Write(firstData); err != nil {
-		log.Println("failed to write the request body to standard input. ", err.Error())
-		// TODO define error
-		return err
+	sr := StreamReader{
+		ReadFunc: func() ([]byte, error) {
+			r, err := stream.Recv()
+			if r != nil {
+				return r.Data, err
+			}
+			return nil, err
+		},
 	}
 
-	for {
-		c, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		data := c.GetData()
-		stdin.Write(data)
-	}
-
-	out, err := cmd.Output()
+	_, err = io.Copy(stdin, sr)
 	if err != nil {
-		log.Println("failed to starts the specified command. ", err.Error())
-		// TODO define error
+		log.Println("failed to write stdin ", err)
 		return err
 	}
 
-	err = stream.SendAndClose(&pbSmart.ReceivePackResponse{
-		Data: out,
-	})
+	//for {
+	//	c, err := stream.Recv()
+	//	if data := c.GetData(); len(data) > 0 {
+	//		_, err = stdin.Write(data)
+	//		if err != nil {
+	//			log.Println("failed to write stdin ", err)
+	//			return err
+	//		}
+	//	}
+	//	if err == io.EOF {
+	//		break
+	//	}
+	//	if err != nil {
+	//		log.Println("failed to recv stream ", err)
+	//		return err
+	//	}
+	//}
 
+	// "git-upload-pack" waits for the remaining input and it hangs,
+	// so must close it after completing the copy request body to standard input.
+	stdin.Close()
+
+	var buf []byte
+	sw := &StreamWriter{
+		WriteFunc: func(p []byte) error {
+			buf = append(buf, p...)
+			return nil
+		},
+	}
+
+	_, err = io.Copy(sw, stdout)
+	if err != nil {
+		return err
+	}
+	err = stream.SendAndClose(&pbSmart.ReceivePackResponse{
+		Data: buf,
+	})
 	return err
+	//buf := make([]byte, 32*1024)
+	//n, err := stdout.Read(buf)
+	//var data []byte
+	//if n > 0 {
+	//	data = buf[:n]
+	//}
+	//err = stream.SendAndClose(&pbSmart.ReceivePackResponse{
+	//	Data: data,
+	//})
+	//if err != nil && err != io.EOF {
+	//	log.Println("failed to read std out ", err)
+	//	return err
+	//}
+
+}
+
+type StreamWriter struct {
+	WriteFunc func(p []byte) error
+}
+
+func (s *StreamWriter) Write(p []byte) (n int, err error) {
+	err = s.WriteFunc(p)
+	n = len(p)
+	return
+}
+
+type StreamReader struct {
+	ReadFunc func() ([]byte, error)
+}
+
+func (s StreamReader) Read(p []byte) (n int, err error) {
+	data, err := s.ReadFunc()
+	n = copy(p, data)
+	data = data[n:]
+	if len(data) == 0 {
+		return n, err
+	}
+	return
 }
 
 func (s *SmartProtocolService) GetInfoRefs(ctx context.Context, request *pbSmart.InfoRefsRequest) (*pbSmart.InfoRefsResponse, error) {

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package replication;
+
+option go_package = "github.com/vvatanabe/git-ha-poc/proto/replication";
+
+message Repository {
+  string user = 1;
+  string repo = 2;
+}
+
+message ReplicateRepositoryRequest {
+  Repository repository = 1;
+  string remote_url = 2;
+}
+
+message ReplicateRepositoryResponse {
+  bytes data = 1;
+}
+
+service ReplicationService {
+  rpc ReplicateRepository (ReplicateRepositoryRequest) returns (ReplicateRepositoryResponse);
+}
