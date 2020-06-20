@@ -1,1 +1,1 @@
-# Git-HA-POC
+# git-ha-poc
