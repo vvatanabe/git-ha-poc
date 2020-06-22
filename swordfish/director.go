@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -20,7 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func getDirector(config Config) func(context.Context, string) (context.Context, *grpc.ClientConn, error) {
+func getDirector(config Config) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
 
 	credentialsCache := make(map[string]credentials.TransportCredentials)
 
@@ -41,21 +42,23 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 		log.Fatalln("failed to init worker", err)
 	}
 
-	return func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, error) {
-
-		finishedFunc := func() {
-
-		}
+	return func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, func(), error) {
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return ctx, nil, errors.New("no incoming context") // TODO
+			return ctx, nil, nil, errors.New("no incoming context") // TODO
 		}
-		values := md.Get("x-git-user")
-		if len(values) < 1 {
-			return ctx, nil, errors.New("no user name in incoming context") // TODO
+		valuesUser := md.Get("x-git-user")
+		if len(valuesUser) < 1 {
+			return ctx, nil, nil, errors.New("no user name in incoming context") // TODO
 		}
-		userName := values[0]
+		userName := valuesUser[0]
+
+		valuesRepo := md.Get("x-git-repo")
+		if len(valuesRepo) < 1 {
+			return ctx, nil, nil, errors.New("no repo name in incoming context") // TODO
+		}
+		repoName := valuesRepo[0]
 
 		var zoneName string
 		for _, user := range config.Users {
@@ -65,14 +68,7 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 			}
 		}
 		if zoneName == "" {
-			return ctx, nil, errors.New("no zone") // TODO
-		}
-
-		var nodes []Node
-		for _, zone := range config.Zones {
-			if zone.Name == zoneName {
-				nodes = zone.Nodes
-			}
+			return ctx, nil, nil, errors.New("no zone") // TODO
 		}
 
 		type Operation int
@@ -80,62 +76,135 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 			Unknown = iota
 			Write
 			Read
-			Replicate
 		)
 
 		getOperation := func(fullMethodName string) Operation {
-
-			//- match:
-			//addr: tadpole:50051
-			//- match: /smart.SmartProtocolService
-			//addr: tadpole:50051
 			if strings.HasPrefix(fullMethodName, "/repository.RepositoryService") {
+				return Write
+			}
+			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
+				return Write
+			}
+			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostUploadPack") {
 				return Read
 			}
-			if s
+			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/GetInfoRefs") { // TODO
+				return Read
+			}
+			return Unknown
 		}
 
-		//if IsReadOnlyRPC(fullMethodName) {
-		//	nodes, err := GetReadableNodesByGroup(group)
-		//	if err != nil {
-		//		return
-		//	}
-		//} else {
-		//	nodes, err := GetWritableNodeByGroup(group)
-		//	if err != nil {
-		//		return
-		//	}
-		//}
+		ope := getOperation(fullMethodName)
+		if ope == Unknown {
+			return ctx, nil, nil, errors.New("unknown operation: " + fullMethodName)
+		}
 
-		for _, backend := range config.Routes {
-			if strings.HasPrefix(fullMethodName, backend.Match) {
-				if config.Verbose {
-					printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, backend.Addr))
+		getNode := func(zoneName string, ope Operation) *Node {
+			var nodes map[*Node]struct{}
+			for _, zone := range config.Zones {
+				if zone.Name == zoneName {
+					for _, node := range zone.Nodes {
+						nodes[&node] = struct{}{}
+					}
+					break
 				}
-				if backend.CertFile == "" {
-					conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
-						grpc.WithInsecure())
-					return ctx, conn, err
+			}
+			switch ope {
+			case Write:
+				for node := range nodes {
+					if node.Writable {
+						return node
+					}
 				}
-				creds := getCredentials(credentialsCache, backend)
-				if creds != nil {
-					conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
-						grpc.WithTransportCredentials(creds))
-					return ctx, conn, err
+			case Read:
+				for node := range nodes {
+					return node
 				}
-				printFatal("failed to create TLS credentials")
-				return ctx, nil, status.Errorf(codes.FailedPrecondition, "Addr TLS is not configured properly in grpc-proxy")
+			}
+			return nil
+		}
+
+		backend := getNode(zoneName, ope)
+		if backend == nil {
+			if config.Verbose {
+				printInfo(fmt.Sprintf("Not found: %s", fullMethodName))
+			}
+			return ctx, nil, nil, status.Errorf(codes.Unimplemented, "Unknown method")
+		}
+
+		finishedFunc := func() {
+
+			type ReplicationJob struct {
+				Ope Operation `json:"ope"`
+				User string `json:"use"`
+				Repo string `json:"repo"`
+				TargetNode string `json:"target_node"`
+				RemoteNode string `json:"remote_node"`
+				Zone string `json:"zone"`
+			}
+
+			var entries []*jobworker.EnqueueBatchEntry
+			for _, zone := range config.Zones {
+				if zone.Name == zoneName {
+					for i, node := range zone.Nodes {
+						if !node.Writable {
+							var content = &ReplicationJob{
+								Ope:    ope,
+								Zone:   zoneName,
+								TargetNode:   node.Addr,
+								User:   userName,
+								Repo:   repoName,
+								RemoteNode: backend.Addr,
+							}
+							b, err := json.Marshal(content)
+							if err != nil {
+								printError(err)
+								return
+							}
+
+							entries = append(entries, &jobworker.EnqueueBatchEntry{
+								ID:              fmt.Sprintf("id-%d", i),
+								Content:         string(b),
+							})
+						}
+					}
+					break
+				}
+			}
+
+			out, err := jw.EnqueueBatch(context.Background(), &jobworker.EnqueueBatchInput{
+				Queue:   "replication",
+				Entries: entries,
+			})
+			if err != nil {
+				if out != nil {
+					printError(err, out.Failed)
+				} else {
+					printError(err)
+				}
 			}
 		}
 
 		if config.Verbose {
-			printInfo(fmt.Sprintf("Not found: %s", fullMethodName))
+			printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, backend.Addr))
 		}
-		return ctx, nil, status.Errorf(codes.Unimplemented, "Unknown method")
+		if backend.CertFile == "" {
+			conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+				grpc.WithInsecure())
+			return ctx, conn, finishedFunc, err
+		}
+		creds := getCredentials(credentialsCache, backend)
+		if creds != nil {
+			conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+				grpc.WithTransportCredentials(creds))
+			return ctx, conn, finishedFunc, err
+		}
+		printFatal("failed to create TLS credentials")
+		return ctx, nil, nil, status.Errorf(codes.FailedPrecondition, "Addr TLS is not configured properly in grpc-proxy")
 	}
 }
 
-func getCredentials(cache map[string]credentials.TransportCredentials, backend Route) credentials.TransportCredentials {
+func getCredentials(cache map[string]credentials.TransportCredentials, backend *Node) credentials.TransportCredentials {
 	if cache[backend.Addr] != nil {
 		return cache[backend.Addr]
 	}
