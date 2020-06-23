@@ -71,13 +71,6 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 			return ctx, nil, nil, errors.New("no zone") // TODO
 		}
 
-		type Operation int
-		const (
-			Unknown = iota
-			Write
-			Read
-		)
-
 		getOperation := func(fullMethodName string) Operation {
 			if strings.HasPrefix(fullMethodName, "/repository.RepositoryService") {
 				return Write
@@ -134,26 +127,17 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 
 		finishedFunc := func() {
 
-			type ReplicationJob struct {
-				Ope Operation `json:"ope"`
-				User string `json:"use"`
-				Repo string `json:"repo"`
-				TargetNode string `json:"target_node"`
-				RemoteNode string `json:"remote_node"`
-				Zone string `json:"zone"`
-			}
-
 			var entries []*jobworker.EnqueueBatchEntry
 			for _, zone := range config.Zones {
 				if zone.Name == zoneName {
 					for i, node := range zone.Nodes {
 						if !node.Writable {
-							var content = &ReplicationJob{
-								Ope:    ope,
-								Zone:   zoneName,
-								TargetNode:   node.Addr,
-								User:   userName,
-								Repo:   repoName,
+							var content = &ReplicationContent{
+								Ope:        ope,
+								Zone:       zoneName,
+								TargetNode: node.Addr,
+								User:       userName,
+								Repo:       repoName,
 								RemoteNode: backend.Addr,
 							}
 							b, err := json.Marshal(content)
@@ -163,8 +147,8 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 							}
 
 							entries = append(entries, &jobworker.EnqueueBatchEntry{
-								ID:              fmt.Sprintf("id-%d", i),
-								Content:         string(b),
+								ID:      fmt.Sprintf("id-%d", i),
+								Content: string(b),
 							})
 						}
 					}
@@ -202,6 +186,23 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 		printFatal("failed to create TLS credentials")
 		return ctx, nil, nil, status.Errorf(codes.FailedPrecondition, "Addr TLS is not configured properly in grpc-proxy")
 	}
+}
+
+type Operation string
+
+const (
+	Unknown = "unknown"
+	Write   = "Write"
+	Read    = "read"
+)
+
+type ReplicationContent struct {
+	Ope        Operation `json:"ope"`
+	User       string    `json:"use"`
+	Repo       string    `json:"repo"`
+	TargetNode string    `json:"target_node"`
+	RemoteNode string    `json:"remote_node"`
+	Zone       string    `json:"zone"`
 }
 
 func getCredentials(cache map[string]credentials.TransportCredentials, backend *Node) credentials.TransportCredentials {
