@@ -56,8 +56,6 @@ github.com/go-jwdk/db-connector v0.2.2 h1:hevPIWbFCVdndf7v2hIORvmWAw20T31IAlDC9G
 github.com/go-jwdk/db-connector v0.2.2/go.mod h1:lHoiCMELWmJLyhsto4ud7SHLdsjQaynIKJdO0yanc2I=
 github.com/go-jwdk/jobworker v0.3.0 h1:5uAB+sHIN2ZeX9SqxyTSa1N6UrVDhEC+nyzqU1sPNtY=
 github.com/go-jwdk/jobworker v0.3.0/go.mod h1:h2BwDxld0GGmJDXyrnCKPKsNQbLubm4v9bcQ2vXCnp8=
-github.com/go-jwdk/mysql-connector v0.1.0 h1:T37NGJjFfFJLsGxAKvrvxhIX3iqdlB61Q5y23Li8hZc=
-github.com/go-jwdk/mysql-connector v0.1.0/go.mod h1:c0wUSauk2L3vIWGbAByWBxjsirFoNV+yPW3NgNNc/WU=
 github.com/go-jwdk/mysql-connector v0.1.1 h1:QnTT0c9pCpUldCbV6cLn/sjDKIyexzzPZ2+8s/1clZk=
 github.com/go-jwdk/mysql-connector v0.1.1/go.mod h1:c0wUSauk2L3vIWGbAByWBxjsirFoNV+yPW3NgNNc/WU=
 github.com/go-kit/kit v0.8.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2as=
