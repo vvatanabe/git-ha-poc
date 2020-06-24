@@ -1,5 +1,16 @@
 version: '3'
 services:
+
+  barracuda:
+    build:
+      context: ./
+      dockerfile: barracuda/Dockerfile
+    image: git-ha-poc/barracuda
+    container_name: barracuda
+    environment:
+      DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
+      TZ: Asia/Tokyo
+
   crab:
     build:
       context: ./
@@ -7,9 +18,11 @@ services:
     image: git-ha-poc/crab
     container_name: crab
     ports:
-      - "8080:8080"
+      - 8080:8080
     environment:
-      - "SWORDFISH_ADDR=swordfish:50051"
+      SWORDFISH_ADDR: swordfish:50051
+      TZ: Asia/Tokyo
+      
   swordfish:
     build:
       context: ./
@@ -17,7 +30,11 @@ services:
     image: git-ha-poc/swordfish
     container_name: swordfish
     ports:
-      - "50051:50051"
+      - 50051:50051
+    environment:
+      DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
+      TZ: Asia/Tokyo
+      
   tadpole:
     build:
       context: ./
@@ -25,4 +42,20 @@ services:
     image: git-ha-poc/tadpole
     container_name: tadpole
     ports:
-      - "50052:50051"
+      - 50052:50051
+    environment:
+      TZ: Asia/Tokyo
+      
+
+  db:
+    image: mysql:5.7
+    container_name: db
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: deadbeef
+      MYSQL_DATABASE: git-ha-poc
+      TZ: Asia/Tokyo
+    volumes:
+      - ${PWD}/db/my.cnf:/etc/mysql/conf.d/my.cnf
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
