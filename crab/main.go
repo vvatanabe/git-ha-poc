@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+
 	"github.com/gorilla/mux"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
@@ -30,10 +32,14 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[crab] ")
 
-	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithInsecure())
+	unaryChain := grpc_middleware.ChainUnaryClient(XGitUserUnaryInterceptor, XGitRepoUnaryInterceptor)
+	streamChain := grpc_middleware.ChainStreamClient(XGitUserStreamInterceptor, XGitRepoStreamInterceptor)
+	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"),
+		grpc.WithInsecure(), grpc.WithUnaryInterceptor(unaryChain), grpc.WithStreamInterceptor(streamChain))
 	if err != nil {
 		log.Fatalf("failed to dial: %s", err)
 	}
+
 	transfer := &GitHttpTransfer{
 		client: pbSmart.NewSmartProtocolServiceClient(conn),
 	}
@@ -42,39 +48,30 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			vars := mux.Vars(r)
+			ctx := r.Context()
+			ctx = AddUserToContext(ctx, vars["user"])
+			ctx = AddRepoToContext(ctx, vars["repo"])
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+
 	r.Path("/{user}/{repo}.git/git-upload-pack").
 		Methods(http.MethodPost).
-		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-			user := vars["user"]
-			repo := vars["repo"]
-			transfer.GitUploadPack(context.Background(), user, repo, rw, r)
-		})
+		HandlerFunc(transfer.GitUploadPack)
 
 	r.Path("/{user}/{repo}.git/git-receive-pack").Methods(http.MethodPost).
-		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-			user := vars["user"]
-			repo := vars["repo"]
-			transfer.GitReceivePack(context.Background(), user, repo, rw, r)
-		})
+		HandlerFunc(transfer.GitReceivePack)
 
 	r.Path("/{user}/{repo}.git/info/refs").Methods(http.MethodGet).
-		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-			user := vars["user"]
-			repo := vars["repo"]
-			transfer.GetInfoRefs(context.Background(), user, repo, rw, r)
-		})
+		HandlerFunc(transfer.GetInfoRefs)
 
 	r.Path("/{user}/{repo}.git").
 		Methods(http.MethodPost).
-		HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-			user := vars["user"]
-			repo := vars["repo"]
-			repository.Create(context.Background(), user, repo, rw, r)
-		})
+		HandlerFunc(repository.Create)
 
 	log.Println("start server on port", port)
 
@@ -88,7 +85,10 @@ type GitRepository struct {
 	client pbRepository.RepositoryServiceClient
 }
 
-func (gr *GitRepository) Create(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+func (gr *GitRepository) Create(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	user := GetUserFromContext(ctx)
+	repo := GetRepoFromContext(ctx)
 	_, err := gr.client.CreateRepository(ctx, &pbRepository.CreateRepositoryRequest{
 		User: user,
 		Repo: repo,
@@ -106,7 +106,11 @@ type GitHttpTransfer struct {
 	client pbSmart.SmartProtocolServiceClient
 }
 
-func (t *GitHttpTransfer) GitUploadPack(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	user := GetUserFromContext(ctx)
+	repo := GetRepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -154,7 +158,11 @@ func (t *GitHttpTransfer) GitUploadPack(ctx context.Context, user, repo string, 
 	}
 }
 
-func (t *GitHttpTransfer) GitReceivePack(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	user := GetUserFromContext(ctx)
+	repo := GetRepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -183,7 +191,7 @@ func (t *GitHttpTransfer) GitReceivePack(ctx context.Context, user, repo string,
 			return
 		}
 
-		rw.Write(data)
+		rw.Write(resp.Data)
 	}()
 
 	err = stream.Send(&pbSmart.ReceivePackRequest{
@@ -227,7 +235,11 @@ func (t *GitHttpTransfer) GitReceivePack(ctx context.Context, user, repo string,
 	rw.WriteHeader(http.StatusOK)
 }
 
-func (t *GitHttpTransfer) GetInfoRefs(ctx context.Context, user, repo string, rw http.ResponseWriter, r *http.Request) {
+func (t *GitHttpTransfer) GetInfoRefs(rw http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	user := GetUserFromContext(ctx)
+	repo := GetRepoFromContext(ctx)
 
 	serviceName := getServiceType(r)
 	var service pbSmart.Service
