@@ -28,6 +28,7 @@ const (
 	flagNamePort     = "port"
 	flagNameCertFile = "cert_file"
 	flagNameKeyFile  = "key_file"
+	flagNameKeyDSN   = "dsn"
 )
 
 var (
@@ -50,11 +51,13 @@ func main() {
 	flags.IntP(flagNamePort, "p", 50051, fmt.Sprintf("listen port [%s_%s]", envPrefix, strings.ToUpper(flagNamePort)))
 	flags.String(flagNameCertFile, "", fmt.Sprintf("cert file path [%s_%s]", envPrefix, strings.ToUpper(flagNameCertFile)))
 	flags.String(flagNameKeyFile, "", fmt.Sprintf("key file path [%s_%s]", envPrefix, strings.ToUpper(flagNameKeyFile)))
+	flags.String(flagNameKeyDSN, "", "data source name for replication queue")
 
 	_ = viper.BindPFlag(flagNameVerbose, flags.Lookup(flagNameVerbose))
 	_ = viper.BindPFlag(flagNamePort, flags.Lookup(flagNamePort))
 	_ = viper.BindPFlag(flagNameCertFile, flags.Lookup(flagNameCertFile))
 	_ = viper.BindPFlag(flagNameKeyFile, flags.Lookup(flagNameKeyFile))
+	_ = viper.BindPFlag(flagNameKeyDSN, flags.Lookup(flagNameKeyDSN))
 
 	cobra.OnInitialize(func() {
 		configFile, err := flags.GetString(flagNameConfig)

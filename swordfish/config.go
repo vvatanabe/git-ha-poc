@@ -6,7 +6,8 @@ type Config struct {
 	CertFile string `mapstructure:"cert_file"`
 	KeyFile  string `mapstructure:"key_file"`
 	Zones    []Zone `mapstructure:"zones"`
-	Users    []User `mapstructure:"repos"`
+	Users    []User `mapstructure:"users"`
+	DSN      string `mapstructure:"dsn"`
 }
 
 type Zone struct {

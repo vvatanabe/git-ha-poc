@@ -32,7 +32,6 @@ services:
     ports:
       - 50051:50051
     environment:
-      DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
       
   tadpole:

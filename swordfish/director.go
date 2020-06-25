@@ -8,6 +8,8 @@ import (
 	"log"
 	"strings"
 
+	dbconn "github.com/go-jwdk/db-connector"
+
 	"google.golang.org/grpc/metadata"
 
 	"github.com/go-jwdk/mysql-connector"
@@ -21,19 +23,34 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const replicationQueueName = "replication"
+
 func getDirector(config Config) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
 
 	credentialsCache := make(map[string]credentials.TransportCredentials)
 
-	conn, err := mysql.Open(&mysql.Config{
-		DSN: "", // TODO
+	jwConn, err := mysql.Open(&mysql.Config{
+		DSN: config.DSN,
 	})
 	if err != nil {
 		// TODO
 		log.Fatalln("failed to open conn", err)
 	}
+	jwConn.SetLoggerFunc(log.Println)
+
+	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
+		Name:              replicationQueueName,
+		DelaySeconds:      2,
+		VisibilityTimeout: 60,
+		MaxReceiveCount:   10,
+		DeadLetterTarget:  "",
+	})
+	if err != nil {
+		log.Fatalln("failed to create queue", err)
+	}
+
 	jw, err := jobworker.New(&jobworker.Setting{
-		Primary:                    conn, // TODO
+		Primary:                    jwConn,
 		DeadConnectorRetryInterval: 3,
 		LoggerFunc:                 log.Println,
 	})
@@ -157,7 +174,7 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 			}
 
 			out, err := jw.EnqueueBatch(context.Background(), &jobworker.EnqueueBatchInput{
-				Queue:   "replication",
+				Queue:   replicationQueueName,
 				Entries: entries,
 			})
 			if err != nil {
