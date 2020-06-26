@@ -11,6 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	dbconn "github.com/go-jwdk/db-connector"
+	"github.com/go-jwdk/jobworker"
+	"github.com/go-jwdk/mysql-connector"
+
 	"github.com/spf13/viper"
 
 	"github.com/spf13/cobra"
@@ -82,12 +86,44 @@ func main() {
 	}
 }
 
+const replicationQueueName = "replication"
+
 func run(cmd *cobra.Command, args []string) {
 
 	// debug config
 	if config.Verbose {
 		printDebug(fmt.Sprintf("config: %#v", config))
 	}
+
+	// init replication worker
+	jwConn, err := mysql.Open(&mysql.Config{
+		DSN: config.DSN,
+	})
+	if err != nil {
+		printFatal("failed to open conn", err)
+	}
+	jwConn.SetLoggerFunc(printInfo)
+
+	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
+		Name:              replicationQueueName,
+		DelaySeconds:      2,
+		VisibilityTimeout: 60,
+		MaxReceiveCount:   10,
+		DeadLetterTarget:  "",
+	})
+	if err != nil {
+		printFatal("failed to create queue", err)
+	}
+
+	publisher, err := jobworker.New(&jobworker.Setting{
+		Primary:                    jwConn,
+		DeadConnectorRetryInterval: 3,
+		LoggerFunc:                 printInfo,
+	})
+	if err != nil {
+		printFatal("failed to init worker", err)
+	}
+	defer publisher.Shutdown(context.Background())
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 
@@ -97,7 +133,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	printInfo("proxy running at %s", lis.Addr())
 
-	server := newServer(config)
+	server := newServer(config, publisher)
 
 	go func() {
 		if err := server.Serve(lis); err != nil {
@@ -123,11 +159,11 @@ func run(cmd *cobra.Command, args []string) {
 	printInfo("completed graceful shutdown")
 }
 
-func newServer(config Config) *grpc.Server {
+func newServer(config Config, publisher *jobworker.JobWorker) *grpc.Server {
 	var opts []grpc.ServerOption
 
 	opts = append(opts, grpc.CustomCodec(proxy.NewCodec()),
-		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(config))))
+		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(config, publisher))))
 
 	if config.CertFile != "" && config.KeyFile != "" {
 		creds, err := credentials.NewServerTLSFromFile(config.CertFile, config.KeyFile)

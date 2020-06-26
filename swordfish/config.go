@@ -10,6 +10,24 @@ type Config struct {
 	DSN      string `mapstructure:"dsn"`
 }
 
+func (c *Config) GetZoneNameByUserName(name string) string {
+	for _, user := range config.Users {
+		if name == user.Name {
+			return user.Zone
+		}
+	}
+	return ""
+}
+
+func (c *Config) GetNodesByZoneName(name string) []Node {
+	for _, zone := range config.Zones {
+		if zone.Name == name {
+			return zone.Nodes
+		}
+	}
+	return nil
+}
+
 type Zone struct {
 	Name  string `mapstructure:"name"`
 	Nodes []Node `mapstructure:"nodes"`

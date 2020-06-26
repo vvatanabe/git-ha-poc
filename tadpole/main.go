@@ -124,7 +124,7 @@ func removeRemote(bin, name, repoPath string) error {
 }
 
 func fetchInternal(bin, name, repoPath string) error {
-	args := []string{"fetch", name, "+refs/heads/*:refs/heads/*"}
+	args := []string{"fetch", "--prune", name, "+refs/*:refs/*"}
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = repoPath
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -302,24 +302,6 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 		return err
 	}
 
-	//for {
-	//	c, err := stream.Recv()
-	//	if data := c.GetData(); len(data) > 0 {
-	//		_, err = stdin.Write(data)
-	//		if err != nil {
-	//			log.Println("failed to write stdin ", err)
-	//			return err
-	//		}
-	//	}
-	//	if err == io.EOF {
-	//		break
-	//	}
-	//	if err != nil {
-	//		log.Println("failed to recv stream ", err)
-	//		return err
-	//	}
-	//}
-
 	// "git-upload-pack" waits for the remaining input and it hangs,
 	// so must close it after completing the copy request body to standard input.
 	stdin.Close()
@@ -340,20 +322,6 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 		Data: buf,
 	})
 	return err
-	//buf := make([]byte, 32*1024)
-	//n, err := stdout.Read(buf)
-	//var data []byte
-	//if n > 0 {
-	//	data = buf[:n]
-	//}
-	//err = stream.SendAndClose(&pbSmart.ReceivePackResponse{
-	//	Data: data,
-	//})
-	//if err != nil && err != io.EOF {
-	//	log.Println("failed to read std out ", err)
-	//	return err
-	//}
-
 }
 
 type StreamWriter struct {

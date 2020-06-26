@@ -5,14 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
-	dbconn "github.com/go-jwdk/db-connector"
-
 	"google.golang.org/grpc/metadata"
-
-	"github.com/go-jwdk/mysql-connector"
 
 	"github.com/go-jwdk/jobworker"
 
@@ -23,85 +18,30 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const replicationQueueName = "replication"
-
-func getDirector(config Config) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
+func getDirector(config Config, publisher *jobworker.JobWorker) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
 
 	credentialsCache := make(map[string]credentials.TransportCredentials)
 
-	jwConn, err := mysql.Open(&mysql.Config{
-		DSN: config.DSN,
-	})
-	if err != nil {
-		// TODO
-		log.Fatalln("failed to open conn", err)
-	}
-	jwConn.SetLoggerFunc(log.Println)
-
-	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
-		Name:              replicationQueueName,
-		DelaySeconds:      2,
-		VisibilityTimeout: 60,
-		MaxReceiveCount:   10,
-		DeadLetterTarget:  "",
-	})
-	if err != nil {
-		log.Fatalln("failed to create queue", err)
-	}
-
-	jw, err := jobworker.New(&jobworker.Setting{
-		Primary:                    jwConn,
-		DeadConnectorRetryInterval: 3,
-		LoggerFunc:                 log.Println,
-	})
-	if err != nil {
-		// TODO
-		log.Fatalln("failed to init worker", err)
-	}
-
 	return func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, func(), error) {
 
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			return ctx, nil, nil, errors.New("no incoming context") // TODO
-		}
-		valuesUser := md.Get("x-git-user")
-		if len(valuesUser) < 1 {
+		userName := GetUserFromContext(ctx)
+		if len(userName) < 1 {
 			return ctx, nil, nil, errors.New("no user name in incoming context") // TODO
 		}
-		userName := valuesUser[0]
 
-		valuesRepo := md.Get("x-git-repo")
-		if len(valuesRepo) < 1 {
+		repoName := GetRepoFromContext(ctx)
+		if len(repoName) < 1 {
 			return ctx, nil, nil, errors.New("no repo name in incoming context") // TODO
 		}
-		repoName := valuesRepo[0]
 
-		var zoneName string
-		for _, user := range config.Users {
-			if userName == user.Name {
-				zoneName = user.Zone
-				break
-			}
-		}
+		zoneName := config.GetZoneNameByUserName(userName)
 		if zoneName == "" {
-			return ctx, nil, nil, errors.New("no zone") // TODO
+			return ctx, nil, nil, errors.New("no zone")
 		}
 
-		getOperation := func(fullMethodName string) Operation {
-			if strings.HasPrefix(fullMethodName, "/repository.RepositoryService") {
-				return Write
-			}
-			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
-				return Write
-			}
-			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostUploadPack") {
-				return Read
-			}
-			if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/GetInfoRefs") { // TODO
-				return Read
-			}
-			return Unknown
+		nodes := config.GetNodesByZoneName(zoneName)
+		if len(nodes) == 0 {
+			return ctx, nil, nil, errors.New("no nodes")
 		}
 
 		ope := getOperation(fullMethodName)
@@ -109,94 +49,27 @@ func getDirector(config Config) func(context.Context, string) (context.Context, 
 			return ctx, nil, nil, errors.New("unknown operation: " + fullMethodName)
 		}
 
-		getNode := func(zoneName string, ope Operation) *Node {
-			var nodes map[*Node]struct{}
-			for _, zone := range config.Zones {
-				if zone.Name == zoneName {
-					for _, node := range zone.Nodes {
-						nodes[&node] = struct{}{}
-					}
-					break
-				}
-			}
-			switch ope {
-			case Write:
-				for node := range nodes {
-					if node.Writable {
-						return node
-					}
-				}
-			case Read:
-				for node := range nodes {
-					return node
-				}
-			}
-			return nil
-		}
-
-		backend := getNode(zoneName, ope)
-		if backend == nil {
+		node := selectNode(nodes, ope)
+		if node == nil {
 			if config.Verbose {
 				printInfo(fmt.Sprintf("Not found: %s", fullMethodName))
 			}
 			return ctx, nil, nil, status.Errorf(codes.Unimplemented, "Unknown method")
 		}
 
-		finishedFunc := func() {
-
-			var entries []*jobworker.EnqueueBatchEntry
-			for _, zone := range config.Zones {
-				if zone.Name == zoneName {
-					for i, node := range zone.Nodes {
-						if !node.Writable {
-							var content = &ReplicationContent{
-								Ope:        ope,
-								Zone:       zoneName,
-								TargetNode: node.Addr,
-								User:       userName,
-								Repo:       repoName,
-								RemoteNode: backend.Addr,
-							}
-							b, err := json.Marshal(content)
-							if err != nil {
-								printError(err)
-								return
-							}
-
-							entries = append(entries, &jobworker.EnqueueBatchEntry{
-								ID:      fmt.Sprintf("id-%d", i),
-								Content: string(b),
-							})
-						}
-					}
-					break
-				}
-			}
-
-			out, err := jw.EnqueueBatch(context.Background(), &jobworker.EnqueueBatchInput{
-				Queue:   replicationQueueName,
-				Entries: entries,
-			})
-			if err != nil {
-				if out != nil {
-					printError(err, out.Failed)
-				} else {
-					printError(err)
-				}
-			}
-		}
+		finishedFunc := getFinishedFunc(publisher, nodes, ope, zoneName, userName, repoName)
 
 		if config.Verbose {
-			printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, backend.Addr))
+			printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, node.Addr))
 		}
-		if backend.CertFile == "" {
-			conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+		if node.CertFile == "" {
+			conn, err := grpc.DialContext(ctx, node.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
 				grpc.WithInsecure())
 			return ctx, conn, finishedFunc, err
 		}
-		creds := getCredentials(credentialsCache, backend)
+		creds := getCredentials(credentialsCache, node)
 		if creds != nil {
-			conn, err := grpc.DialContext(ctx, backend.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+			conn, err := grpc.DialContext(ctx, node.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
 				grpc.WithTransportCredentials(creds))
 			return ctx, conn, finishedFunc, err
 		}
@@ -212,6 +85,81 @@ const (
 	Write   = "Write"
 	Read    = "read"
 )
+
+func getOperation(fullMethodName string) Operation {
+	if strings.HasPrefix(fullMethodName, "/repository.RepositoryService") {
+		return Write
+	}
+	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
+		return Write
+	}
+	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostUploadPack") {
+		return Read
+	}
+	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/GetInfoRefs") { // TODO
+		return Read
+	}
+	return Unknown
+}
+
+func selectNode(nodes []Node, ope Operation) *Node {
+	shuffled := make(map[Node]struct{})
+	for _, node := range nodes {
+		shuffled[node] = struct{}{}
+	}
+	switch ope {
+	case Write:
+		for node := range shuffled {
+			if node.Writable {
+				return &node
+			}
+		}
+	case Read:
+		for node := range shuffled {
+			return &node
+		}
+	}
+	return nil
+}
+
+func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, ope Operation, zone, user, repo string) func() {
+	return func() {
+		var entries []*jobworker.EnqueueBatchEntry
+		for i, node := range nodes {
+			if node.Writable {
+				continue
+			}
+			content, err := json.Marshal(&ReplicationContent{
+				Ope:        ope,
+				Zone:       zone,
+				TargetNode: node.Addr,
+				User:       user,
+				Repo:       repo,
+				RemoteNode: node.Addr,
+			})
+			if err != nil {
+				printError(err)
+				return
+			}
+			entries = append(entries, &jobworker.EnqueueBatchEntry{
+				ID:      fmt.Sprintf("id-%d", i),
+				Content: string(content),
+			})
+		}
+
+		out, err := publisher.EnqueueBatch(context.Background(), &jobworker.EnqueueBatchInput{
+			Queue:   replicationQueueName,
+			Entries: entries,
+		})
+		if err != nil {
+			if out != nil {
+				printError(err, out.Failed)
+			} else {
+				printError(err)
+			}
+		}
+	}
+}
 
 type ReplicationContent struct {
 	Ope        Operation `json:"ope"`
@@ -233,4 +181,33 @@ func getCredentials(cache map[string]credentials.TransportCredentials, backend *
 	}
 	cache[backend.Addr] = creds
 	return creds
+}
+
+const (
+	metadataKeyUser string = "x-git-user"
+	metadataKeyRepo string = "x-git-repo"
+)
+
+func GetUserFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(metadataKeyUser)
+	if len(values) < 1 {
+		return ""
+	}
+	return values[0]
+}
+
+func GetRepoFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(metadataKeyRepo)
+	if len(values) < 1 {
+		return ""
+	}
+	return values[0]
 }
