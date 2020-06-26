@@ -13,43 +13,65 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
+
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
 	"google.golang.org/grpc"
 )
 
-const port = ":50051"
+const (
+	grpcPort = ":50051"
+	sshPort  = ":2020"
+)
 
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[tadpole] ")
-	lis, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatalf("failed to listen: %v\n", err)
-	}
-	s := grpc.NewServer()
 
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("failed to get user home dir: %v\n", err)
 	}
 	rootPath := path.Join(home, "git", "repositories")
+	binPath := "/usr/bin/git"
 
-	pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
+	go func() {
+		grpcLis, err := net.Listen("tcp", grpcPort)
+		if err != nil {
+			log.Fatalf("failed to listen: %v\n", err)
+		}
+		s := grpc.NewServer()
+
+		pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
+			RootPath: rootPath,
+			BinPath:  binPath,
+		})
+		pbRepository.RegisterRepositoryServiceServer(s, &RepositoryService{
+			RootPath: rootPath,
+			BinPath:  binPath,
+		})
+		pbReplication.RegisterReplicationServiceServer(s, &ReplicationService{
+			RootPath: rootPath,
+			BinPath:  binPath,
+		})
+		log.Printf("start grpc server on port%s\n", grpcPort)
+		if err := s.Serve(grpcLis); err != nil {
+			log.Fatalf("failed to serve: %v\n", err)
+		}
+	}()
+
+	sshLis, err := net.Listen("tcp", sshPort)
+	if err != nil {
+		log.Fatalf("failed to listen: %v\n", err)
+	}
+	s := gitssh.Server{
 		RootPath: rootPath,
-		BinPath:  "/usr/bin/git",
-	})
-	pbRepository.RegisterRepositoryServiceServer(s, &RepositoryService{
-		RootPath: rootPath,
-		BinPath:  "/usr/bin/git",
-	})
-	pbReplication.RegisterReplicationServiceServer(s, &ReplicationService{
-		RootPath: rootPath,
-		BinPath:  "/usr/bin/git",
-	})
-	log.Printf("start server on port%s\n", port)
-	if err := s.Serve(lis); err != nil {
+		BinPath:  binPath,
+	}
+	log.Printf("start ssh server on port%s\n", sshPort)
+	if err := s.Serve(sshLis); err != nil {
 		log.Fatalf("failed to serve: %v\n", err)
 	}
 }
@@ -62,8 +84,8 @@ type ReplicationService struct {
 func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *pbReplication.ReplicateRepositoryRequest) (response *pbReplication.ReplicateRepositoryResponse, err error) {
 
 	remoteName := fmt.Sprintf("internal-%s", RandomString(10))
-	remoteURL := fmt.Sprintf("http://%s/%s/%s.git",
-		request.RemoteAddr, request.Repository.User, request.Repository.User)
+	remoteURL := fmt.Sprintf("tadpole@%s/%s/%s.git",
+		request.RemoteAddr+sshPort, request.Repository.User, request.Repository.User)
 	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
 	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
 	if err != nil {

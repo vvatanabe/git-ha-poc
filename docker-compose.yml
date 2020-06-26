@@ -10,6 +10,8 @@ services:
     environment:
       DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
+    depends_on:
+      - db
 
   crab:
     build:
@@ -32,19 +34,59 @@ services:
     ports:
       - 50051:50051
     environment:
+      DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
-      
-  tadpole:
+    depends_on:
+      - db
+
+  tadpole-1-a:
     build:
       context: ./
       dockerfile: tadpole/Dockerfile
     image: git-ha-poc/tadpole
-    container_name: tadpole
-    ports:
-      - 50052:50051
+    container_name: tadpole-1-a
     environment:
       TZ: Asia/Tokyo
-      
+  tadpole-2-a:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole-2-a
+    environment:
+      TZ: Asia/Tokyo
+  tadpole-3-b:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole-3-a
+    environment:
+      TZ: Asia/Tokyo
+  tadpole-4-b:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole-4-b
+    environment:
+      TZ: Asia/Tokyo
+  tadpole-5-b:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole-5-b
+    environment:
+      TZ: Asia/Tokyo
+  tadpole-6-a:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpole-6-a
+    environment:
+      TZ: Asia/Tokyo
 
   db:
     image: mysql:5.7

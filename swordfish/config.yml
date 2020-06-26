@@ -12,11 +12,11 @@ zones:
         writable: false
   - name: goldsaucer
     nodes:
-      - addr: tadpole-4-a:50051
+      - addr: tadpole-4-b:50051
         writable: true
-      - addr: tadpole-5-a:50051
+      - addr: tadpole-5-b:50051
         writable: false
-      - addr: tadpole-6-b:50051
+      - addr: tadpole-6-a:50051
         writable: false
 users:
   - name: foo
