@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -95,12 +96,18 @@ func run(cmd *cobra.Command, args []string) {
 		printDebug(fmt.Sprintf("config: %#v", config))
 	}
 
+	db, err := sql.Open("mysql", config.DSN)
+	if err != nil {
+		printFatal("failed to open conn of mysql", err)
+	}
+	store := &Store{db: db}
+
 	// init replication worker
 	jwConn, err := mysql.Open(&mysql.Config{
 		DSN: config.DSN,
 	})
 	if err != nil {
-		printFatal("failed to open conn", err)
+		printFatal("failed to open conn of job queue", err)
 	}
 	jwConn.SetLoggerFunc(printInfo)
 
@@ -133,7 +140,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	printInfo("proxy running at %s", lis.Addr())
 
-	server := newServer(config, publisher)
+	server := newServer(config, publisher, store)
 
 	go func() {
 		if err := server.Serve(lis); err != nil {
@@ -159,11 +166,11 @@ func run(cmd *cobra.Command, args []string) {
 	printInfo("completed graceful shutdown")
 }
 
-func newServer(config Config, publisher *jobworker.JobWorker) *grpc.Server {
+func newServer(config Config, publisher *jobworker.JobWorker, store *Store) *grpc.Server {
 	var opts []grpc.ServerOption
 
 	opts = append(opts, grpc.CustomCodec(proxy.NewCodec()),
-		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(config, publisher))))
+		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(config, publisher, store))))
 
 	if config.CertFile != "" && config.KeyFile != "" {
 		creds, err := credentials.NewServerTLSFromFile(config.CertFile, config.KeyFile)

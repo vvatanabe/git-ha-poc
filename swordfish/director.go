@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func getDirector(config Config, publisher *jobworker.JobWorker) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
+type Store struct {
+	db *sql.DB
+}
+
+func (s *Store) GetZoneNameByUserName(name string) (string, error) {
+	row := s.db.QueryRow(`select zone_name from user where name=?`, name)
+	var zoneName string
+	err := row.Scan(zoneName)
+	if err != nil {
+		return "", err
+	}
+	return zoneName, nil
+}
+
+func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
 
 	credentialsCache := make(map[string]credentials.TransportCredentials)
 
@@ -34,8 +49,8 @@ func getDirector(config Config, publisher *jobworker.JobWorker) func(context.Con
 			return ctx, nil, nil, errors.New("no repo name in incoming context") // TODO
 		}
 
-		zoneName := config.GetZoneNameByUserName(userName)
-		if zoneName == "" {
+		zoneName, err := store.GetZoneNameByUserName(userName)
+		if err != nil {
 			return ctx, nil, nil, errors.New("no zone")
 		}
 

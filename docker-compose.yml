@@ -99,4 +99,5 @@ services:
       TZ: Asia/Tokyo
     volumes:
       - ${PWD}/db/my.cnf:/etc/mysql/conf.d/my.cnf
+      - ${PWD}/db/schema:/docker-entrypoint-initdb.d
     command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci

@@ -18,10 +18,3 @@ zones:
         writable: false
       - addr: tadpole-6-a:50051
         writable: false
-users:
-  - name: foo
-    zone: midgar
-  - name: bar
-    zone: midgar
-  - name: baz
-    zone: goldsaucer
