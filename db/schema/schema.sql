@@ -8,7 +8,6 @@ INSERT INTO zone VALUES ('goldsaucer');
 CREATE TABLE IF NOT EXISTS user (
         name       VARCHAR(255) NOT NULL,
         zone_name  VARCHAR(255) NOT NULL,
-        PRIMARY KEY (id),
         UNIQUE(name),
         CONSTRAINT fk_user_zone_name FOREIGN KEY (zone_name) REFERENCES zone (name)
 );
