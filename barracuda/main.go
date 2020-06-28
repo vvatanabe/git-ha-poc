@@ -79,13 +79,20 @@ func main() {
 }
 
 type ReplicationContent struct {
-	Ope        string `json:"ope"`
-	User       string `json:"use"`
-	Repo       string `json:"repo"`
-	TargetNode string `json:"target_node"`
-	RemoteNode string `json:"remote_node"`
-	Zone       string `json:"zone"`
+	Type       ReplicationType `json:"type"`
+	User       string          `json:"use"`
+	Repo       string          `json:"repo"`
+	TargetNode string          `json:"target_node"`
+	RemoteNode string          `json:"remote_node"`
+	Zone       string          `json:"zone"`
 }
+
+type ReplicationType string
+
+const (
+	CreateRepo ReplicationType = "CreateRepo"
+	UpdateRepo ReplicationType = "UpdateRepo"
+)
 
 type ReplicationWorker struct {
 }
@@ -102,13 +109,24 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 	}
 	defer conn.Close()
 	client := pbReplication.NewReplicationServiceClient(conn)
-	_, err = client.ReplicateRepository(context.Background(), &pbReplication.ReplicateRepositoryRequest{
-		Repository: &pbReplication.Repository{
-			User: content.User,
-			Repo: content.Repo,
-		},
-		RemoteAddr: content.RemoteNode,
-	})
+	if content.Type == CreateRepo {
+		_, err = client.CreateRepository(context.Background(), &pbReplication.CreateRepositoryRequest{
+			Repository: &pbReplication.Repository{
+				User: content.User,
+				Repo: content.Repo,
+			},
+			RemoteAddr: content.RemoteNode,
+		})
+	}
+	if content.Type == UpdateRepo {
+		_, err = client.SyncRepository(context.Background(), &pbReplication.SyncRepositoryRequest{
+			Repository: &pbReplication.Repository{
+				User: content.User,
+				Repo: content.Repo,
+			},
+			RemoteAddr: content.RemoteNode,
+		})
+	}
 	if err != nil {
 		return err
 	}

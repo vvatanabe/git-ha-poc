@@ -81,7 +81,27 @@ type ReplicationService struct {
 	BinPath  string
 }
 
-func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *pbReplication.ReplicateRepositoryRequest) (response *pbReplication.ReplicateRepositoryResponse, err error) {
+func (r *ReplicationService) CreateRepository(ctx context.Context, request *pbReplication.CreateRepositoryRequest) (*pbReplication.CreateRepositoryResponse, error) {
+	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
+	if err := mkDirIfNotExist(repoPath); err != nil {
+		return nil, err
+	}
+	initArgs := []string{"init", "--bare", "--shared"}
+	initCmd := exec.Command(r.BinPath, initArgs...)
+	initCmd.Dir = repoPath
+	if err := initCmd.Run(); err != nil {
+		return nil, err
+	}
+	cfgPath := path.Join(repoPath, "config")
+	cfgArgs := []string{"config", "-f", cfgPath, "--unset", "receive.denyNonFastForwards"}
+	cfgCmd := exec.Command(r.BinPath, cfgArgs...)
+	if err := cfgCmd.Run(); err != nil {
+		return nil, err
+	}
+	return &pbReplication.CreateRepositoryResponse{}, nil
+}
+
+func (r *ReplicationService) SyncRepository(ctx context.Context, request *pbReplication.SyncRepositoryRequest) (response *pbReplication.SyncRepositoryResponse, err error) {
 
 	remoteName := fmt.Sprintf("internal-%s", RandomString(10))
 	remoteURL := fmt.Sprintf("tadpole@%s/%s/%s.git",
@@ -104,7 +124,7 @@ func (r *ReplicationService) ReplicateRepository(ctx context.Context, request *p
 		return nil, err
 	}
 
-	return &pbReplication.ReplicateRepositoryResponse{}, nil
+	return &pbReplication.SyncRepositoryResponse{}, nil
 }
 
 const charset = "abcdefghijklmnopqrstuvwxyz" +

@@ -72,7 +72,7 @@ func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) fu
 			return ctx, nil, nil, status.Errorf(codes.Unimplemented, "Unknown method")
 		}
 
-		finishedFunc := getFinishedFunc(publisher, nodes, ope, zoneName, userName, repoName)
+		finishedFunc := getFinishedFunc(publisher, nodes, fullMethodName, zoneName, userName, repoName)
 
 		if config.Verbose {
 			printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, node.Addr))
@@ -137,15 +137,21 @@ func selectNode(nodes []Node, ope Operation) *Node {
 	return nil
 }
 
-func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, ope Operation, zone, user, repo string) func() {
+func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodName, zone, user, repo string) func() {
 	return func() {
+
+		t := getReplicationType(fullMethodName)
+		if t == "" {
+			return
+		}
+
 		var entries []*jobworker.EnqueueBatchEntry
 		for i, node := range nodes {
 			if node.Writable {
 				continue
 			}
 			content, err := json.Marshal(&ReplicationContent{
-				Ope:        ope,
+				Type:       t,
 				Zone:       zone,
 				TargetNode: node.Addr,
 				User:       user,
@@ -177,12 +183,29 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, ope Operation
 }
 
 type ReplicationContent struct {
-	Ope        Operation `json:"ope"`
-	User       string    `json:"use"`
-	Repo       string    `json:"repo"`
-	TargetNode string    `json:"target_node"`
-	RemoteNode string    `json:"remote_node"`
-	Zone       string    `json:"zone"`
+	Type       ReplicationType `json:"type"`
+	User       string          `json:"use"`
+	Repo       string          `json:"repo"`
+	TargetNode string          `json:"target_node"`
+	RemoteNode string          `json:"remote_node"`
+	Zone       string          `json:"zone"`
+}
+
+type ReplicationType string
+
+const (
+	CreateRepo ReplicationType = "CreateRepo"
+	UpdateRepo ReplicationType = "UpdateRepo"
+)
+
+func getReplicationType(fullMethodName string) ReplicationType {
+	if strings.HasPrefix(fullMethodName, "/repository.RepositoryService/CreateRepository") {
+		return CreateRepo
+	}
+	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
+		return UpdateRepo
+	}
+	return ""
 }
 
 func getCredentials(cache map[string]credentials.TransportCredentials, backend *Node) credentials.TransportCredentials {

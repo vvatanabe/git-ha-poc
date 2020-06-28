@@ -9,15 +9,25 @@ message Repository {
   string repo = 2;
 }
 
-message ReplicateRepositoryRequest {
+message CreateRepositoryRequest {
   Repository repository = 1;
   string remote_addr = 2;
 }
 
-message ReplicateRepositoryResponse {
+message CreateRepositoryResponse {
+  bytes data = 1;
+}
+
+message SyncRepositoryRequest {
+  Repository repository = 1;
+  string remote_addr = 2;
+}
+
+message SyncRepositoryResponse {
   bytes data = 1;
 }
 
 service ReplicationService {
-  rpc ReplicateRepository (ReplicateRepositoryRequest) returns (ReplicateRepositoryResponse);
+  rpc CreateRepository (CreateRepositoryRequest) returns (CreateRepositoryResponse);
+  rpc SyncRepository (SyncRepositoryRequest) returns (SyncRepositoryResponse);
 }

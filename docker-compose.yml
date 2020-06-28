@@ -39,6 +39,15 @@ services:
     depends_on:
       - db
 
+  tadpole:
+    build:
+      context: ./
+      dockerfile: tadpole/Dockerfile
+    image: git-ha-poc/tadpole
+    container_name: tadpolea
+    environment:
+      TZ: Asia/Tokyo
+
   tadpole-1-a:
     build:
       context: ./

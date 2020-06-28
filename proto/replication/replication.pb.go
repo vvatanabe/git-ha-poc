@@ -71,7 +71,7 @@ func (m *Repository) GetRepo() string {
 	return ""
 }
 
-type ReplicateRepositoryRequest struct {
+type CreateRepositoryRequest struct {
 	Repository           *Repository `protobuf:"bytes,1,opt,name=repository,proto3" json:"repository,omitempty"`
 	RemoteAddr           string      `protobuf:"bytes,2,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
@@ -79,78 +79,164 @@ type ReplicateRepositoryRequest struct {
 	XXX_sizecache        int32       `json:"-"`
 }
 
-func (m *ReplicateRepositoryRequest) Reset()         { *m = ReplicateRepositoryRequest{} }
-func (m *ReplicateRepositoryRequest) String() string { return proto.CompactTextString(m) }
-func (*ReplicateRepositoryRequest) ProtoMessage()    {}
-func (*ReplicateRepositoryRequest) Descriptor() ([]byte, []int) {
+func (m *CreateRepositoryRequest) Reset()         { *m = CreateRepositoryRequest{} }
+func (m *CreateRepositoryRequest) String() string { return proto.CompactTextString(m) }
+func (*CreateRepositoryRequest) ProtoMessage()    {}
+func (*CreateRepositoryRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_36da0b8129c7cf1c, []int{1}
 }
 
-func (m *ReplicateRepositoryRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicateRepositoryRequest.Unmarshal(m, b)
+func (m *CreateRepositoryRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CreateRepositoryRequest.Unmarshal(m, b)
 }
-func (m *ReplicateRepositoryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicateRepositoryRequest.Marshal(b, m, deterministic)
+func (m *CreateRepositoryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CreateRepositoryRequest.Marshal(b, m, deterministic)
 }
-func (m *ReplicateRepositoryRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicateRepositoryRequest.Merge(m, src)
+func (m *CreateRepositoryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateRepositoryRequest.Merge(m, src)
 }
-func (m *ReplicateRepositoryRequest) XXX_Size() int {
-	return xxx_messageInfo_ReplicateRepositoryRequest.Size(m)
+func (m *CreateRepositoryRequest) XXX_Size() int {
+	return xxx_messageInfo_CreateRepositoryRequest.Size(m)
 }
-func (m *ReplicateRepositoryRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicateRepositoryRequest.DiscardUnknown(m)
+func (m *CreateRepositoryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateRepositoryRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ReplicateRepositoryRequest proto.InternalMessageInfo
+var xxx_messageInfo_CreateRepositoryRequest proto.InternalMessageInfo
 
-func (m *ReplicateRepositoryRequest) GetRepository() *Repository {
+func (m *CreateRepositoryRequest) GetRepository() *Repository {
 	if m != nil {
 		return m.Repository
 	}
 	return nil
 }
 
-func (m *ReplicateRepositoryRequest) GetRemoteAddr() string {
+func (m *CreateRepositoryRequest) GetRemoteAddr() string {
 	if m != nil {
 		return m.RemoteAddr
 	}
 	return ""
 }
 
-type ReplicateRepositoryResponse struct {
+type CreateRepositoryResponse struct {
 	Data                 []byte   `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ReplicateRepositoryResponse) Reset()         { *m = ReplicateRepositoryResponse{} }
-func (m *ReplicateRepositoryResponse) String() string { return proto.CompactTextString(m) }
-func (*ReplicateRepositoryResponse) ProtoMessage()    {}
-func (*ReplicateRepositoryResponse) Descriptor() ([]byte, []int) {
+func (m *CreateRepositoryResponse) Reset()         { *m = CreateRepositoryResponse{} }
+func (m *CreateRepositoryResponse) String() string { return proto.CompactTextString(m) }
+func (*CreateRepositoryResponse) ProtoMessage()    {}
+func (*CreateRepositoryResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_36da0b8129c7cf1c, []int{2}
 }
 
-func (m *ReplicateRepositoryResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ReplicateRepositoryResponse.Unmarshal(m, b)
+func (m *CreateRepositoryResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_CreateRepositoryResponse.Unmarshal(m, b)
 }
-func (m *ReplicateRepositoryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ReplicateRepositoryResponse.Marshal(b, m, deterministic)
+func (m *CreateRepositoryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_CreateRepositoryResponse.Marshal(b, m, deterministic)
 }
-func (m *ReplicateRepositoryResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ReplicateRepositoryResponse.Merge(m, src)
+func (m *CreateRepositoryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateRepositoryResponse.Merge(m, src)
 }
-func (m *ReplicateRepositoryResponse) XXX_Size() int {
-	return xxx_messageInfo_ReplicateRepositoryResponse.Size(m)
+func (m *CreateRepositoryResponse) XXX_Size() int {
+	return xxx_messageInfo_CreateRepositoryResponse.Size(m)
 }
-func (m *ReplicateRepositoryResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ReplicateRepositoryResponse.DiscardUnknown(m)
+func (m *CreateRepositoryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateRepositoryResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ReplicateRepositoryResponse proto.InternalMessageInfo
+var xxx_messageInfo_CreateRepositoryResponse proto.InternalMessageInfo
 
-func (m *ReplicateRepositoryResponse) GetData() []byte {
+func (m *CreateRepositoryResponse) GetData() []byte {
+	if m != nil {
+		return m.Data
+	}
+	return nil
+}
+
+type SyncRepositoryRequest struct {
+	Repository           *Repository `protobuf:"bytes,1,opt,name=repository,proto3" json:"repository,omitempty"`
+	RemoteAddr           string      `protobuf:"bytes,2,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
+	XXX_unrecognized     []byte      `json:"-"`
+	XXX_sizecache        int32       `json:"-"`
+}
+
+func (m *SyncRepositoryRequest) Reset()         { *m = SyncRepositoryRequest{} }
+func (m *SyncRepositoryRequest) String() string { return proto.CompactTextString(m) }
+func (*SyncRepositoryRequest) ProtoMessage()    {}
+func (*SyncRepositoryRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_36da0b8129c7cf1c, []int{3}
+}
+
+func (m *SyncRepositoryRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SyncRepositoryRequest.Unmarshal(m, b)
+}
+func (m *SyncRepositoryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SyncRepositoryRequest.Marshal(b, m, deterministic)
+}
+func (m *SyncRepositoryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncRepositoryRequest.Merge(m, src)
+}
+func (m *SyncRepositoryRequest) XXX_Size() int {
+	return xxx_messageInfo_SyncRepositoryRequest.Size(m)
+}
+func (m *SyncRepositoryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncRepositoryRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncRepositoryRequest proto.InternalMessageInfo
+
+func (m *SyncRepositoryRequest) GetRepository() *Repository {
+	if m != nil {
+		return m.Repository
+	}
+	return nil
+}
+
+func (m *SyncRepositoryRequest) GetRemoteAddr() string {
+	if m != nil {
+		return m.RemoteAddr
+	}
+	return ""
+}
+
+type SyncRepositoryResponse struct {
+	Data                 []byte   `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncRepositoryResponse) Reset()         { *m = SyncRepositoryResponse{} }
+func (m *SyncRepositoryResponse) String() string { return proto.CompactTextString(m) }
+func (*SyncRepositoryResponse) ProtoMessage()    {}
+func (*SyncRepositoryResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_36da0b8129c7cf1c, []int{4}
+}
+
+func (m *SyncRepositoryResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SyncRepositoryResponse.Unmarshal(m, b)
+}
+func (m *SyncRepositoryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SyncRepositoryResponse.Marshal(b, m, deterministic)
+}
+func (m *SyncRepositoryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncRepositoryResponse.Merge(m, src)
+}
+func (m *SyncRepositoryResponse) XXX_Size() int {
+	return xxx_messageInfo_SyncRepositoryResponse.Size(m)
+}
+func (m *SyncRepositoryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncRepositoryResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncRepositoryResponse proto.InternalMessageInfo
+
+func (m *SyncRepositoryResponse) GetData() []byte {
 	if m != nil {
 		return m.Data
 	}
@@ -159,30 +245,34 @@ func (m *ReplicateRepositoryResponse) GetData() []byte {
 
 func init() {
 	proto.RegisterType((*Repository)(nil), "replication.Repository")
-	proto.RegisterType((*ReplicateRepositoryRequest)(nil), "replication.ReplicateRepositoryRequest")
-	proto.RegisterType((*ReplicateRepositoryResponse)(nil), "replication.ReplicateRepositoryResponse")
+	proto.RegisterType((*CreateRepositoryRequest)(nil), "replication.CreateRepositoryRequest")
+	proto.RegisterType((*CreateRepositoryResponse)(nil), "replication.CreateRepositoryResponse")
+	proto.RegisterType((*SyncRepositoryRequest)(nil), "replication.SyncRepositoryRequest")
+	proto.RegisterType((*SyncRepositoryResponse)(nil), "replication.SyncRepositoryResponse")
 }
 
 func init() { proto.RegisterFile("replication/replication.proto", fileDescriptor_36da0b8129c7cf1c) }
 
 var fileDescriptor_36da0b8129c7cf1c = []byte{
-	// 247 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x91, 0x41, 0x4b, 0xc3, 0x40,
-	0x10, 0x85, 0xa9, 0x88, 0xe0, 0xc4, 0xd3, 0x7a, 0xb0, 0x54, 0x44, 0xc9, 0xc5, 0x5e, 0x9a, 0xd0,
-	0x56, 0xf0, 0xac, 0x3f, 0x61, 0xbd, 0x79, 0x91, 0x4d, 0x76, 0x68, 0x16, 0x6c, 0x66, 0x9d, 0x9d,
-	0x04, 0xbc, 0xf8, 0xdb, 0x25, 0x9b, 0x62, 0x17, 0x89, 0x78, 0x7b, 0x7c, 0xcc, 0xbc, 0xf7, 0x86,
-	0x81, 0x1b, 0x46, 0xff, 0xee, 0x6a, 0x23, 0x8e, 0xda, 0x32, 0xd1, 0x85, 0x67, 0x12, 0x52, 0x59,
-	0x82, 0xf2, 0x07, 0x00, 0x8d, 0x9e, 0x82, 0x13, 0xe2, 0x4f, 0xa5, 0xe0, 0xb4, 0x0b, 0xc8, 0xf3,
-	0xd9, 0xdd, 0x6c, 0x79, 0xae, 0xa3, 0x1e, 0x18, 0xa3, 0xa7, 0xf9, 0xc9, 0xc8, 0x06, 0x9d, 0xf7,
-	0xb0, 0xd0, 0x07, 0x13, 0x3c, 0xae, 0x6b, 0xfc, 0xe8, 0x30, 0x88, 0x7a, 0x04, 0xe0, 0x1f, 0x18,
-	0xbd, 0xb2, 0xcd, 0x55, 0x91, 0x16, 0x49, 0x76, 0x92, 0x51, 0x75, 0x0b, 0x19, 0xe3, 0x9e, 0x04,
-	0xdf, 0x8c, 0xb5, 0x7c, 0x48, 0x84, 0x11, 0x3d, 0x59, 0xcb, 0xf9, 0x1a, 0xae, 0x27, 0x73, 0x83,
-	0xa7, 0x36, 0xe0, 0x50, 0xd5, 0x1a, 0x31, 0x31, 0xf2, 0x42, 0x47, 0xbd, 0xf9, 0x02, 0xa5, 0x8f,
-	0xc9, 0x2f, 0xc8, 0xbd, 0xab, 0x51, 0x35, 0x70, 0x39, 0x61, 0xa4, 0xee, 0x7f, 0xb7, 0xfc, 0xe3,
-	0xc4, 0xc5, 0xf2, 0xff, 0xc1, 0xb1, 0xd3, 0xf3, 0xf6, 0x75, 0xbd, 0x73, 0xd2, 0x74, 0x55, 0x51,
-	0xd3, 0xbe, 0xec, 0x7b, 0x23, 0xa6, 0x35, 0x15, 0x96, 0x3b, 0x27, 0xab, 0xc6, 0xac, 0x3c, 0xd5,
-	0x65, 0x7c, 0x4b, 0xfa, 0xa8, 0xea, 0x2c, 0xa2, 0xed, 0x77, 0x00, 0x00, 0x00, 0xff, 0xff, 0x2b,
-	0xa2, 0xea, 0x9b, 0xca, 0x01, 0x00, 0x00,
+	// 286 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x92, 0x41, 0x4b, 0xc3, 0x40,
+	0x10, 0x85, 0xa9, 0x88, 0xe0, 0x44, 0x44, 0x16, 0xb4, 0xa1, 0x20, 0x4a, 0x54, 0xf0, 0x60, 0x13,
+	0x6c, 0x05, 0xcf, 0xea, 0x3f, 0x48, 0x4f, 0x7a, 0x29, 0x9b, 0x64, 0x68, 0x17, 0x6c, 0x76, 0x3b,
+	0x3b, 0x09, 0xf4, 0x5f, 0xfa, 0x93, 0x24, 0x9b, 0x62, 0x37, 0xd5, 0xea, 0xcd, 0xdb, 0xe3, 0x31,
+	0x6f, 0xdf, 0xb7, 0xc3, 0xc0, 0x39, 0xa1, 0x79, 0x57, 0xb9, 0x64, 0xa5, 0xcb, 0xc4, 0xd3, 0xb1,
+	0x21, 0xcd, 0x5a, 0x04, 0x9e, 0x15, 0x3d, 0x00, 0xa4, 0x68, 0xb4, 0x55, 0xac, 0x69, 0x25, 0x04,
+	0xec, 0x57, 0x16, 0x29, 0xec, 0x5d, 0xf6, 0x6e, 0x0f, 0x53, 0xa7, 0x1b, 0x8f, 0xd0, 0xe8, 0x70,
+	0xaf, 0xf5, 0x1a, 0x1d, 0x59, 0xe8, 0xbf, 0x10, 0x4a, 0xc6, 0x4d, 0x36, 0xc5, 0x65, 0x85, 0x96,
+	0xc5, 0x23, 0x00, 0x7d, 0x99, 0xee, 0xa1, 0x60, 0xd4, 0x8f, 0x7d, 0x0a, 0x2f, 0xe3, 0x8d, 0x8a,
+	0x0b, 0x08, 0x08, 0x17, 0x9a, 0x71, 0x2a, 0x8b, 0x82, 0xd6, 0x75, 0xd0, 0x5a, 0x4f, 0x45, 0x41,
+	0x51, 0x0c, 0xe1, 0xf7, 0x52, 0x6b, 0x74, 0x69, 0xb1, 0x81, 0x2c, 0x24, 0x4b, 0xd7, 0x77, 0x94,
+	0x3a, 0x1d, 0x2d, 0xe1, 0x74, 0xb2, 0x2a, 0xf3, 0xff, 0x44, 0xbc, 0x83, 0xb3, 0xed, 0xca, 0xdd,
+	0x80, 0xa3, 0x8f, 0x1e, 0x88, 0x74, 0xd3, 0x3a, 0x41, 0xaa, 0x55, 0x8e, 0x62, 0x0a, 0x27, 0xdb,
+	0xff, 0x14, 0xd7, 0x1d, 0xbc, 0x1d, 0xbb, 0x1f, 0xdc, 0xfc, 0x31, 0xb5, 0x66, 0x79, 0x85, 0xe3,
+	0x2e, 0xa5, 0x88, 0x3a, 0xc1, 0x1f, 0xb7, 0x36, 0xb8, 0xfa, 0x75, 0xa6, 0x7d, 0xfa, 0x79, 0xfc,
+	0x76, 0x3f, 0x53, 0x3c, 0xaf, 0xb2, 0x38, 0xd7, 0x8b, 0xa4, 0xae, 0x25, 0xcb, 0x52, 0x66, 0x98,
+	0xcc, 0x14, 0x0f, 0xe7, 0x72, 0x68, 0x74, 0x9e, 0xb8, 0x23, 0xf4, 0xcf, 0x32, 0x3b, 0x70, 0xd6,
+	0xf8, 0x33, 0x00, 0x00, 0xff, 0xff, 0x40, 0xf1, 0x2b, 0x1f, 0xb8, 0x02, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -197,7 +287,8 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type ReplicationServiceClient interface {
-	ReplicateRepository(ctx context.Context, in *ReplicateRepositoryRequest, opts ...grpc.CallOption) (*ReplicateRepositoryResponse, error)
+	CreateRepository(ctx context.Context, in *CreateRepositoryRequest, opts ...grpc.CallOption) (*CreateRepositoryResponse, error)
+	SyncRepository(ctx context.Context, in *SyncRepositoryRequest, opts ...grpc.CallOption) (*SyncRepositoryResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -208,9 +299,18 @@ func NewReplicationServiceClient(cc *grpc.ClientConn) ReplicationServiceClient {
 	return &replicationServiceClient{cc}
 }
 
-func (c *replicationServiceClient) ReplicateRepository(ctx context.Context, in *ReplicateRepositoryRequest, opts ...grpc.CallOption) (*ReplicateRepositoryResponse, error) {
-	out := new(ReplicateRepositoryResponse)
-	err := c.cc.Invoke(ctx, "/replication.ReplicationService/ReplicateRepository", in, out, opts...)
+func (c *replicationServiceClient) CreateRepository(ctx context.Context, in *CreateRepositoryRequest, opts ...grpc.CallOption) (*CreateRepositoryResponse, error) {
+	out := new(CreateRepositoryResponse)
+	err := c.cc.Invoke(ctx, "/replication.ReplicationService/CreateRepository", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *replicationServiceClient) SyncRepository(ctx context.Context, in *SyncRepositoryRequest, opts ...grpc.CallOption) (*SyncRepositoryResponse, error) {
+	out := new(SyncRepositoryResponse)
+	err := c.cc.Invoke(ctx, "/replication.ReplicationService/SyncRepository", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,35 +319,57 @@ func (c *replicationServiceClient) ReplicateRepository(ctx context.Context, in *
 
 // ReplicationServiceServer is the server API for ReplicationService service.
 type ReplicationServiceServer interface {
-	ReplicateRepository(context.Context, *ReplicateRepositoryRequest) (*ReplicateRepositoryResponse, error)
+	CreateRepository(context.Context, *CreateRepositoryRequest) (*CreateRepositoryResponse, error)
+	SyncRepository(context.Context, *SyncRepositoryRequest) (*SyncRepositoryResponse, error)
 }
 
 // UnimplementedReplicationServiceServer can be embedded to have forward compatible implementations.
 type UnimplementedReplicationServiceServer struct {
 }
 
-func (*UnimplementedReplicationServiceServer) ReplicateRepository(ctx context.Context, req *ReplicateRepositoryRequest) (*ReplicateRepositoryResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReplicateRepository not implemented")
+func (*UnimplementedReplicationServiceServer) CreateRepository(ctx context.Context, req *CreateRepositoryRequest) (*CreateRepositoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateRepository not implemented")
+}
+func (*UnimplementedReplicationServiceServer) SyncRepository(ctx context.Context, req *SyncRepositoryRequest) (*SyncRepositoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncRepository not implemented")
 }
 
 func RegisterReplicationServiceServer(s *grpc.Server, srv ReplicationServiceServer) {
 	s.RegisterService(&_ReplicationService_serviceDesc, srv)
 }
 
-func _ReplicationService_ReplicateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReplicateRepositoryRequest)
+func _ReplicationService_CreateRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateRepositoryRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).ReplicateRepository(ctx, in)
+		return srv.(ReplicationServiceServer).CreateRepository(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/replication.ReplicationService/ReplicateRepository",
+		FullMethod: "/replication.ReplicationService/CreateRepository",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).ReplicateRepository(ctx, req.(*ReplicateRepositoryRequest))
+		return srv.(ReplicationServiceServer).CreateRepository(ctx, req.(*CreateRepositoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ReplicationService_SyncRepository_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncRepositoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).SyncRepository(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/replication.ReplicationService/SyncRepository",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).SyncRepository(ctx, req.(*SyncRepositoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -257,8 +379,12 @@ var _ReplicationService_serviceDesc = grpc.ServiceDesc{
 	HandlerType: (*ReplicationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ReplicateRepository",
-			Handler:    _ReplicationService_ReplicateRepository_Handler,
+			MethodName: "CreateRepository",
+			Handler:    _ReplicationService_CreateRepository_Handler,
+		},
+		{
+			MethodName: "SyncRepository",
+			Handler:    _ReplicationService_SyncRepository_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
