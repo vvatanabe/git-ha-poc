@@ -2,8 +2,8 @@ CREATE TABLE IF NOT EXISTS zone (
         name    VARCHAR(255) NOT NULL,
         UNIQUE(name)
 );
-INSERT INTO zone VALUES (1, 'midgar');
-INSERT INTO zone VALUES (2, 'goldsaucer');
+INSERT INTO zone VALUES ('midgar');
+INSERT INTO zone VALUES ('goldsaucer');
 
 CREATE TABLE IF NOT EXISTS user (
         name       VARCHAR(255) NOT NULL,
@@ -12,9 +12,9 @@ CREATE TABLE IF NOT EXISTS user (
         UNIQUE(name),
         CONSTRAINT fk_user_zone_name FOREIGN KEY (zone_name) REFERENCES zone (name)
 );
-INSERT INTO user VALUES (1, 'foo', 'midgar');
-INSERT INTO user VALUES (2, 'bar', 'midgar');
-INSERT INTO user VALUES (3, 'baz', 'goldsaucer');
+INSERT INTO user VALUES ('foo', 'midgar');
+INSERT INTO user VALUES ('bar', 'midgar');
+INSERT INTO user VALUES ('baz', 'goldsaucer');
 
 CREATE TABLE IF NOT EXISTS repo (
         name       VARCHAR(255) NOT NULL,

@@ -116,7 +116,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 				User: content.User,
 				Repo: content.Repo,
 			},
-			RemoteAddr: strings.Split(content.RemoteNode, ":")[0git
+			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
 		})
 	}
 	if content.Type == UpdateRepo {
