@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -115,7 +116,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 				User: content.User,
 				Repo: content.Repo,
 			},
-			RemoteAddr: content.RemoteNode,
+			RemoteAddr: strings.Split(content.RemoteNode, ":")[0git
 		})
 	}
 	if content.Type == UpdateRepo {
@@ -124,7 +125,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 				User: content.User,
 				Repo: content.Repo,
 			},
-			RemoteAddr: content.RemoteNode,
+			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
 		})
 	}
 	if err != nil {
