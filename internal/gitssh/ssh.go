@@ -1,6 +1,7 @@
 package gitssh
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -17,6 +18,7 @@ type Server struct {
 	RootPath string
 	BinPath  string
 	Handler  func(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions)
+	Signer   ssh.Signer
 }
 
 func (srv *Server) Serve(listener net.Listener) error {
@@ -31,9 +33,12 @@ func (srv *Server) Serve(listener net.Listener) error {
 
 	cfg := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-			return &ssh.Permissions{}, nil
+			log.Println(conn.RemoteAddr(), "authenticate with", key.Type())
+			return nil, nil
 		},
 	}
+	cfg.AddHostKey(srv.Signer)
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -98,6 +103,7 @@ func (h *DefaultHandler) Handler(ch ssh.Channel, req *ssh.Request, perms *ssh.Pe
 		} else {
 			h.sendExit(ch, 0, "")
 		}
+		ch.Close()
 	}()
 
 	subCmd, repoPath := h.extractPayload(req.Payload)
@@ -105,7 +111,7 @@ func (h *DefaultHandler) Handler(ch ssh.Channel, req *ssh.Request, perms *ssh.Pe
 		return
 	}
 
-	cmd := exec.Command(h.BinPath, subCmd)
+	cmd := exec.Command(h.BinPath, "-c", fmt.Sprintf("%s '%s'", subCmd, repoPath))
 	cmd.Dir = repoPath
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -167,7 +173,7 @@ func (h *DefaultHandler) extractPayload(payload []byte) (subCmd, repoPath string
 	path := cmdArgs[1]
 	path = strings.Trim(path, "'")
 
-	if len(strings.Split(path, "/")) != 2 {
+	if len(strings.Split(path, "/")) != 3 {
 		return
 	}
 

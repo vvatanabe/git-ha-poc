@@ -12,7 +12,7 @@ import (
 
 	dbconn "github.com/go-jwdk/db-connector"
 	"github.com/go-jwdk/jobworker"
-	"github.com/go-jwdk/mysql-connector"
+	mysqlConn "github.com/go-jwdk/mysql-connector"
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	"google.golang.org/grpc"
 )
@@ -23,7 +23,7 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[barracuda] ")
 
-	jwConn, err := mysql.Open(&mysql.Config{
+	jwConn, err := mysqlConn.Open(&mysqlConn.Config{
 		DSN: os.Getenv("DSN"),
 	})
 	if err != nil {
@@ -81,7 +81,7 @@ func main() {
 
 type ReplicationContent struct {
 	Type       ReplicationType `json:"type"`
-	User       string          `json:"use"`
+	User       string          `json:"user"`
 	Repo       string          `json:"repo"`
 	TargetNode string          `json:"target_node"`
 	RemoteNode string          `json:"remote_node"`
@@ -100,7 +100,7 @@ type ReplicationWorker struct {
 
 func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 	var content ReplicationContent
-	err := json.Unmarshal([]byte(job.Content), &job)
+	err := json.Unmarshal([]byte(job.Content), &content)
 	if err != nil {
 		return err
 	}
@@ -118,8 +118,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 			},
 			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
 		})
-	}
-	if content.Type == UpdateRepo {
+	} else if content.Type == UpdateRepo {
 		_, err = client.SyncRepository(context.Background(), &pbReplication.SyncRepositoryRequest{
 			Repository: &pbReplication.Repository{
 				User: content.User,
@@ -127,6 +126,8 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 			},
 			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
 		})
+	} else {
+		return errors.New("unknown: ", content)
 	}
 	if err != nil {
 		return err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
+	"golang.org/x/crypto/ssh"
 
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
@@ -26,6 +28,24 @@ const (
 	sshPort  = ":2020"
 )
 
+var (
+	hostPrivateKeySigner ssh.Signer
+)
+
+func init() {
+	keyPath := "./host_key"
+
+	hostPrivateKey, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		panic(err)
+	}
+
+	hostPrivateKeySigner, err = ssh.ParsePrivateKey(hostPrivateKey)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[tadpole] ")
@@ -36,6 +56,7 @@ func main() {
 	}
 	rootPath := path.Join(home, "git", "repositories")
 	binPath := "/usr/bin/git"
+	shellPath := "/usr/bin/git-shell"
 
 	go func() {
 		grpcLis, err := net.Listen("tcp", grpcPort)
@@ -68,7 +89,8 @@ func main() {
 	}
 	s := gitssh.Server{
 		RootPath: rootPath,
-		BinPath:  binPath,
+		BinPath:  shellPath,
+		Signer:   hostPrivateKeySigner,
 	}
 	log.Printf("start ssh server on port%s\n", sshPort)
 	if err := s.Serve(sshLis); err != nil {
@@ -102,10 +124,9 @@ func (r *ReplicationService) CreateRepository(ctx context.Context, request *pbRe
 }
 
 func (r *ReplicationService) SyncRepository(ctx context.Context, request *pbReplication.SyncRepositoryRequest) (response *pbReplication.SyncRepositoryResponse, err error) {
-
 	remoteName := fmt.Sprintf("internal-%s", RandomString(10))
-	remoteURL := fmt.Sprintf("tadpole@%s/%s/%s.git",
-		request.RemoteAddr+sshPort, request.Repository.User, request.Repository.User)
+	remoteURL := fmt.Sprintf("ssh://git@%s/%s/%s.git",
+		request.RemoteAddr+sshPort, request.Repository.User, request.Repository.Repo)
 	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
 	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
 	if err != nil {
@@ -141,6 +162,8 @@ func RandomString(length int) string {
 	return string(b)
 }
 
+
+// git remote add <name> ssh://git@<host>:2020/<user>/<repo>.git
 func addRemote(bin, name, url, repoPath string) error {
 	args := []string{"remote", "add", name, url}
 	cmd := exec.Command(bin, args...)
@@ -165,6 +188,7 @@ func removeRemote(bin, name, repoPath string) error {
 	return nil
 }
 
+// git fetch --prune <name> "+refs/*:refs/*"
 func fetchInternal(bin, name, repoPath string) error {
 	args := []string{"fetch", "--prune", name, "+refs/*:refs/*"}
 	cmd := exec.Command(bin, args...)

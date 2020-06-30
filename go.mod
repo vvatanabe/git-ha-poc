@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/go-jwdk/db-connector v0.2.2
 	github.com/go-jwdk/jobworker v0.3.0
-	github.com/go-jwdk/mysql-connector v0.1.1
+	github.com/go-jwdk/mysql-connector v0.1.2
 	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0
@@ -13,6 +13,7 @@ require (
 	github.com/spf13/viper v1.7.0
 	github.com/stretchr/testify v1.6.1
 	github.com/vvatanabe/expiremap v0.9.1 // indirect
+	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
 	golang.org/x/text v0.3.3 // indirect

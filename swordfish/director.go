@@ -26,7 +26,7 @@ type Store struct {
 func (s *Store) GetZoneNameByUserName(name string) (string, error) {
 	row := s.db.QueryRow(`select zone_name from user where name=?`, name)
 	var zoneName string
-	err := row.Scan(zoneName)
+	err := row.Scan(&zoneName)
 	if err != nil {
 		return "", err
 	}
@@ -51,7 +51,7 @@ func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) fu
 
 		zoneName, err := store.GetZoneNameByUserName(userName)
 		if err != nil {
-			return ctx, nil, nil, errors.New("no zone")
+			return ctx, nil, nil, err
 		}
 
 		nodes := config.GetNodesByZoneName(zoneName)
@@ -145,6 +145,16 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodNam
 			return
 		}
 
+		var writerNode *Node
+		for _, node := range nodes {
+			if node.Writable {
+				writerNode = &node
+				break
+			}
+		}
+		if writerNode == nil {
+			printError("writer node is nil")
+		}
 		var entries []*jobworker.EnqueueBatchEntry
 		for i, node := range nodes {
 			if node.Writable {
@@ -156,7 +166,7 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodNam
 				TargetNode: node.Addr,
 				User:       user,
 				Repo:       repo,
-				RemoteNode: node.Addr,
+				RemoteNode: writerNode.Addr,
 			})
 			if err != nil {
 				printError(err)
@@ -184,7 +194,7 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodNam
 
 type ReplicationContent struct {
 	Type       ReplicationType `json:"type"`
-	User       string          `json:"use"`
+	User       string          `json:"user"`
 	Repo       string          `json:"repo"`
 	TargetNode string          `json:"target_node"`
 	RemoteNode string          `json:"remote_node"`

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -130,7 +129,7 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 	buf := new(bytes.Buffer)
 	io.Copy(buf, body)
 
-	stream, err := t.client.PostUploadPack(context.Background(), &pbSmart.UploadPackRequest{
+	stream, err := t.client.PostUploadPack(ctx, &pbSmart.UploadPackRequest{
 		Repository: &pbSmart.Repository{
 			User: user,
 			Repo: repo,
@@ -179,7 +178,7 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 	}
 	defer body.Close()
 
-	stream, err := t.client.PostReceivePack(context.Background())
+	stream, err := t.client.PostReceivePack(ctx)
 	if err != nil {
 		RenderInternalServerError(rw)
 		return
