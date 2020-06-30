@@ -3,9 +3,9 @@ module github.com/vvatanabe/git-ha-poc
 go 1.14
 
 require (
-	github.com/go-jwdk/db-connector v0.2.2
+	github.com/go-jwdk/db-connector v0.2.3
 	github.com/go-jwdk/jobworker v0.3.0
-	github.com/go-jwdk/mysql-connector v0.1.2
+	github.com/go-jwdk/mysql-connector v0.1.3
 	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/mux v1.7.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0

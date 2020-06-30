@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/metadata"
 
@@ -118,23 +120,27 @@ func getOperation(fullMethodName string) Operation {
 }
 
 func selectNode(nodes []Node, ope Operation) *Node {
-	shuffled := make(map[Node]struct{})
-	for _, node := range nodes {
-		shuffled[node] = struct{}{}
-	}
+	shuffle(nodes)
 	switch ope {
 	case Write:
-		for node := range shuffled {
+		for _, node := range nodes {
 			if node.Writable {
 				return &node
 			}
 		}
 	case Read:
-		for node := range shuffled {
+		for _, node := range nodes {
 			return &node
 		}
 	}
 	return nil
+}
+
+func shuffle(nodes []Node) {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(nodes), func(i, j int) {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	})
 }
 
 func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodName, zone, user, repo string) func() {

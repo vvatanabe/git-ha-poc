@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -127,7 +128,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
 		})
 	} else {
-		return errors.New("unknown: ", content)
+		return errors.New("unknown type: " + string(content.Type))
 	}
 	if err != nil {
 		return err
