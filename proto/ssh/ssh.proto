@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package ssh;
+
+option go_package = "github.com/vvatanabe/git-ha-poc/proto/ssh";
+
+message Repository {
+  string user = 1;
+  string repo = 2;
+}
+
+message UploadPackRequest {
+  Repository repository = 1;
+  bytes data = 2;
+}
+
+message UploadPackResponse {
+  bytes data = 1;
+}
+
+message ReceivePackRequest {
+  Repository repository = 1;
+  bytes data = 2;
+}
+
+message ReceivePackResponse {
+  bytes data = 1;
+}
+
+service SSHProtocolService {
+  rpc PostUploadPack (UploadPackRequest) returns (stream UploadPackResponse);
+  rpc PostReceivePack (stream ReceivePackRequest) returns (ReceivePackResponse);
+}
