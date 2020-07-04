@@ -16,6 +16,7 @@ message UploadPackRequest {
 
 message UploadPackResponse {
   bytes data = 1;
+  bytes err = 2;
 }
 
 message ReceivePackRequest {
@@ -25,9 +26,10 @@ message ReceivePackRequest {
 
 message ReceivePackResponse {
   bytes data = 1;
+  bytes err = 2;
 }
 
 service SSHProtocolService {
-  rpc PostUploadPack (UploadPackRequest) returns (stream UploadPackResponse);
-  rpc PostReceivePack (stream ReceivePackRequest) returns (ReceivePackResponse);
+  rpc PostUploadPack (stream UploadPackRequest) returns (stream UploadPackResponse);
+  rpc PostReceivePack (stream ReceivePackRequest) returns (stream ReceivePackResponse);
 }
