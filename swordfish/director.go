@@ -107,10 +107,10 @@ func getOperation(fullMethodName string) Operation {
 	if strings.HasPrefix(fullMethodName, "/repository.RepositoryService") {
 		return Write
 	}
-	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
+	if strings.HasSuffix(fullMethodName, "/PostReceivePack") {
 		return Write
 	}
-	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostUploadPack") {
+	if strings.HasSuffix(fullMethodName, "/PostUploadPack") {
 		return Read
 	}
 	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/GetInfoRefs") { // TODO
@@ -218,7 +218,7 @@ func getReplicationType(fullMethodName string) ReplicationType {
 	if strings.HasPrefix(fullMethodName, "/repository.RepositoryService/CreateRepository") {
 		return CreateRepo
 	}
-	if strings.HasPrefix(fullMethodName, "/smart.SmartProtocolService/PostReceivePack") {
+	if strings.HasSuffix(fullMethodName, "/PostReceivePack") {
 		return UpdateRepo
 	}
 	return ""
