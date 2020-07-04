@@ -10,6 +10,8 @@ services:
     environment:
       DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
+    depends_on:
+      - db
 
   crab:
     build:
@@ -22,7 +24,19 @@ services:
     environment:
       SWORDFISH_ADDR: swordfish:50051
       TZ: Asia/Tokyo
-      
+
+  flounder:
+    build:
+      context: ./
+      dockerfile: flounder/Dockerfile
+    image: git-ha-poc/flounder
+    container_name: flounder
+    ports:
+      - 2222:2222
+    environment:
+      SWORDFISH_ADDR: swordfish:50051
+      TZ: Asia/Tokyo
+
   swordfish:
     build:
       context: ./
@@ -34,6 +48,8 @@ services:
     environment:
       DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
+    depends_on:
+      - db
 
   tadpole:
     build:
