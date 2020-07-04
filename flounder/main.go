@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -22,7 +21,7 @@ import (
 )
 
 const (
-	sshPort = ":2000"
+	sshPort = ":2222"
 )
 
 var (
@@ -31,7 +30,7 @@ var (
 )
 
 func init() {
-	keyPath := "./host_key"
+	keyPath := "/root/host_key"
 
 	hostPrivateKey, err := ioutil.ReadFile(keyPath)
 	if err != nil {
@@ -44,7 +43,7 @@ func init() {
 	}
 
 	streamChain := grpc_middleware.ChainStreamClient(XGitUserStreamInterceptor, XGitRepoStreamInterceptor)
-	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithStreamInterceptor(streamChain))
+	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithStreamInterceptor(streamChain), grpc.WithInsecure())
 	if err != nil {
 		panic("failed to dial: " + err.Error())
 	}
@@ -98,11 +97,10 @@ func handler(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions) {
 	if subCmd == "git-receive-pack" {
 		err = gitSSHTransfer.GitReceivePack(ctx, ch)
 	} else if subCmd == "git-upload-pack" {
-		err = gitSSHTransfer.GitUploadPack(ctx, ch)
+		err = gitSSHTransfer.GitUploadPack(ctx, ch, req)
 	} else {
 		err = errors.New("unknown operation " + subCmd)
 	}
-
 }
 
 func extractPayload(payload []byte) (subCmd, user, repo string) {
@@ -135,7 +133,7 @@ func extractPayload(payload []byte) (subCmd, user, repo string) {
 
 	subCmd = cmd
 	user = splitPath[1]
-	repo = splitPath[2]
+	repo = strings.TrimSuffix(splitPath[2], ".git")
 	return
 }
 
@@ -155,39 +153,81 @@ type GitSSHTransfer struct {
 	client pbSSH.SSHProtocolServiceClient
 }
 
-func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch io.ReadWriter) error {
+func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch ssh.Channel, req *ssh.Request) error {
 
 	user := GetUserFromContext(ctx)
 	repo := GetRepoFromContext(ctx)
 
-	buf := new(bytes.Buffer)
-	io.Copy(buf, ch)
-
-	stream, err := t.client.PostUploadPack(ctx, &pbSSH.UploadPackRequest{
-		Repository: &pbSSH.Repository{
-			User: user,
-			Repo: repo,
-		},
-		Data: buf.Bytes(),
-	})
+	stream, err := t.client.PostUploadPack(ctx)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err := stream.CloseSend()
+		if err != nil {
+			log.Println("failed to close send ", err)
+		}
+	}()
+
+	go func() {
+		err = stream.Send(&pbSSH.UploadPackRequest{
+			Repository: &pbSSH.Repository{
+				User: user,
+				Repo: repo,
+			},
+		})
+		if err != nil {
+			log.Println("failed to send first ", err)
+		}
+
+		buf := make([]byte, 32*1024)
+
+		for {
+			n, err := ch.Read(buf)
+			if n > 0 {
+				err = stream.Send(&pbSSH.UploadPackRequest{
+					Repository: &pbSSH.Repository{
+						User: user,
+						Repo: repo,
+					},
+					Data: buf[:n],
+				})
+				if err != nil {
+					log.Println("failed to send request ", err)
+					return
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Println("failed to read channel ", err)
+				return
+			}
+		}
+	}()
 
 	for {
 		c, err := stream.Recv()
+		if c != nil {
+			if len(c.Data) > 0 {
+				ch.Write(c.Data)
+			}
+			if len(c.Err) > 0 {
+				ch.Stderr().Write(c.Data)
+			}
+		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return err
 		}
-		ch.Write(c.Data)
 	}
 	return nil
 }
 
-func (t *GitSSHTransfer) GitReceivePack(ctx context.Context, ch io.ReadWriter) error {
+func (t *GitSSHTransfer) GitReceivePack(ctx context.Context, ch ssh.Channel) error {
 
 	user := GetUserFromContext(ctx)
 	repo := GetRepoFromContext(ctx)
@@ -197,39 +237,58 @@ func (t *GitSSHTransfer) GitReceivePack(ctx context.Context, ch io.ReadWriter) e
 		return err
 	}
 	defer func() {
-		resp, err := stream.CloseAndRecv()
+		err := stream.CloseSend()
 		if err != nil {
-			log.Println("failed to close and recv ", err)
-			return
+			log.Println("failed to close send ", err)
 		}
-
-		ch.Write(resp.Data)
 	}()
 
-	err = stream.Send(&pbSSH.ReceivePackRequest{
-		Repository: &pbSSH.Repository{
-			User: user,
-			Repo: repo,
-		},
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		err = stream.Send(&pbSSH.ReceivePackRequest{
+			Repository: &pbSSH.Repository{
+				User: user,
+				Repo: repo,
+			},
+		})
+		if err != nil {
+			log.Println("failed to send first ", err)
+		}
 
-	buf := make([]byte, 32*1024)
+		buf := make([]byte, 32*1024)
+
+		for {
+			n, err := ch.Read(buf)
+			if n > 0 {
+				err = stream.Send(&pbSSH.ReceivePackRequest{
+					Repository: &pbSSH.Repository{
+						User: user,
+						Repo: repo,
+					},
+					Data: buf[:n],
+				})
+				if err != nil {
+					log.Println("failed to send request ", err)
+					return
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Println("failed to read channel ", err)
+				return
+			}
+		}
+	}()
 
 	for {
-		n, err := ch.Read(buf)
-		if n > 0 {
-			err = stream.Send(&pbSSH.ReceivePackRequest{
-				Repository: &pbSSH.Repository{
-					User: user,
-					Repo: repo,
-				},
-				Data: buf[:n],
-			})
-			if err != nil {
-				return err
+		c, err := stream.Recv()
+		if c != nil {
+			if len(c.Data) > 0 {
+				ch.Write(c.Data)
+			}
+			if len(c.Err) > 0 {
+				ch.Stderr().Write(c.Data)
 			}
 		}
 		if err == io.EOF {
