@@ -11,8 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
 
 	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
 	"golang.org/x/crypto/ssh"
@@ -68,6 +71,10 @@ func main() {
 		pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
 			RootPath: rootPath,
 			BinPath:  binPath,
+		})
+		pbSSH.RegisterSSHProtocolServiceServer(s, &SSHProtocolService{
+			RootPath:  rootPath,
+			ShellPath: shellPath,
 		})
 		pbRepository.RegisterRepositoryServiceServer(s, &RepositoryService{
 			RootPath: rootPath,
@@ -130,18 +137,21 @@ func (r *ReplicationService) SyncRepository(ctx context.Context, request *pbRepl
 	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
 	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
 	if err != nil {
+		log.Println("failed to add remote ", err)
 		return nil, err
 	}
 
 	defer func() {
 		e := removeRemote(r.BinPath, remoteName, repoPath)
 		if e != nil {
+			log.Println("failed to remove remote ", err)
 			err = e
 		}
 	}()
 
 	err = fetchInternal(r.BinPath, remoteName, repoPath)
 	if err != nil {
+		log.Println("failed to fetch internal ", err)
 		return nil, err
 	}
 
@@ -161,7 +171,6 @@ func RandomString(length int) string {
 	}
 	return string(b)
 }
-
 
 // git remote add <name> ssh://git@<host>:2020/<user>/<repo>.git
 func addRemote(bin, name, url, repoPath string) error {
@@ -433,4 +442,169 @@ func (s *SmartProtocolService) GetInfoRefs(ctx context.Context, request *pbSmart
 	return &pbSmart.InfoRefsResponse{
 		Data: refs,
 	}, nil
+}
+
+type SSHProtocolService struct {
+	RootPath  string
+	ShellPath string
+}
+
+func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_PostUploadPackServer) error {
+
+	c, err := stream.Recv()
+	if err != nil {
+		log.Println("failed to recv stream first", err)
+		return err
+	}
+
+	repo := c.GetRepository()
+
+	repoPath := filepath.Join(s.RootPath, repo.User, repo.Repo+".git")
+	cmd := exec.Command(s.ShellPath, "-c", fmt.Sprintf("%s '%s'", "git-upload-pack", repoPath))
+	cmd.Dir = repoPath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
+		return err
+	}
+	defer stdin.Close()
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
+		return err
+	}
+	defer stdout.Close()
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard error. ", err.Error())
+		return err
+	}
+	defer stderr.Close()
+
+	err = cmd.Start()
+	if err != nil {
+		log.Println("failed to starts the specified command. ", err.Error())
+		return err
+	}
+	defer cmd.Wait()
+
+	go func() {
+		_, err = io.Copy(stdin, &StreamReader{
+			ReadFunc: func() ([]byte, error) {
+				r, err := stream.Recv()
+				if r != nil {
+					return r.Data, err
+				}
+				return nil, err
+			},
+		})
+		stdin.Close()
+	}()
+
+	_, err = io.Copy(&StreamWriter{
+		WriteFunc: func(p []byte) error {
+			return stream.Send(&pbSSH.UploadPackResponse{
+				Data: p,
+			})
+		},
+	}, stdout)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(&StreamWriter{
+		WriteFunc: func(p []byte) error {
+			return stream.Send(&pbSSH.UploadPackResponse{
+				Err: p,
+			})
+		},
+	}, stderr)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_PostReceivePackServer) error {
+
+	c, err := stream.Recv()
+	if err != nil {
+		log.Println("failed to recv stream first", err)
+		return err
+	}
+
+	repo := c.GetRepository()
+
+	repoPath := filepath.Join(s.RootPath, repo.User, repo.Repo+".git")
+	cmd := exec.Command(s.ShellPath, "-c", fmt.Sprintf("%s '%s'", "git-receive-pack", repoPath))
+	cmd.Dir = repoPath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
+		return err
+	}
+	defer stdin.Close()
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
+		return err
+	}
+	defer stdout.Close()
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println("failed to get pipe that will be connected to the command's standard error. ", err.Error())
+		return err
+	}
+	defer stderr.Close()
+
+	err = cmd.Start()
+	if err != nil {
+		log.Println("failed to starts the specified command. ", err.Error())
+		return err
+	}
+	defer cmd.Wait()
+
+	go func() {
+		_, err = io.Copy(stdin, &StreamReader{
+			ReadFunc: func() ([]byte, error) {
+				r, err := stream.Recv()
+				if r != nil {
+					return r.Data, err
+				}
+				return nil, err
+			},
+		})
+		stdin.Close()
+	}()
+
+	_, err = io.Copy(&StreamWriter{
+		WriteFunc: func(p []byte) error {
+			return stream.Send(&pbSSH.ReceivePackResponse{
+				Data: p,
+			})
+		},
+	}, stdout)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(&StreamWriter{
+		WriteFunc: func(p []byte) error {
+			return stream.Send(&pbSSH.ReceivePackResponse{
+				Err: p,
+			})
+		},
+	}, stderr)
+	if err != nil {
+		return err
+	}
+	return nil
 }
