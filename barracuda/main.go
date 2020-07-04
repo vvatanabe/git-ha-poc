@@ -131,6 +131,7 @@ func (r *ReplicationWorker) Work(job *jobworker.Job) error {
 		return errors.New("unknown type: " + string(content.Type))
 	}
 	if err != nil {
+		log.Println("failed replication ", err)
 		return err
 	}
 	return nil
