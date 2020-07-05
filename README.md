@@ -6,6 +6,36 @@ Just a proof of concept for a highly available Git servers.
 
 ![overview](https://cacoo.com/diagrams/9BhTPbZUoMwmP1zp-7076D.png)
 
+## Works
+
+### Build each services
+
+```
+$ docker-compose build
+```
+
+### Run each services
+
+```
+$ docker-compose up
+```
+
+### Create a repository
+
+```
+$ curl -X POST localhost:8080/foo/test.git
+```
+
+### Clone a repository
+
+```
+# HTTP
+$ git clone http://localhost:8080/foo/test.git
+
+# SSH
+$ git clone ssh://git@localhost:2222/foo/test.git
+```
+
 ## Acknowledgments
 
 - [mwitkow/grpc-proxy](https://github.com/mwitkow/grpc-proxy)
