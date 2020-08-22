@@ -18,6 +18,7 @@ import (
 	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
 
 	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
+	gitsshLib "github.com/vvatanabe/git-ssh-test-server/gitssh"
 	"golang.org/x/crypto/ssh"
 
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
@@ -399,6 +400,27 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 	return err
 }
 
+type StreamReadWriter struct {
+	WriteFunc func(p []byte) error
+	ReadFunc  func() ([]byte, error)
+}
+
+func (s *StreamReadWriter) Write(p []byte) (n int, err error) {
+	err = s.WriteFunc(p)
+	n = len(p)
+	return
+}
+
+func (s StreamReadWriter) Read(p []byte) (n int, err error) {
+	data, err := s.ReadFunc()
+	n = copy(p, data)
+	data = data[n:]
+	if len(data) == 0 {
+		return n, err
+	}
+	return
+}
+
 type StreamWriter struct {
 	WriteFunc func(p []byte) error
 }
@@ -460,72 +482,35 @@ func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_Post
 	repo := c.GetRepository()
 
 	repoPath := filepath.Join(s.RootPath, repo.User, repo.Repo+".git")
-	cmd := exec.Command(s.ShellPath, "-c", fmt.Sprintf("%s '%s'", "git-upload-pack", repoPath))
-	cmd.Dir = repoPath
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
-		return err
-	}
-	defer stdin.Close()
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
-		return err
-	}
-	defer stdout.Close()
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard error. ", err.Error())
-		return err
-	}
-	defer stderr.Close()
-
-	err = cmd.Start()
-	if err != nil {
-		log.Println("failed to starts the specified command. ", err.Error())
-		return err
-	}
-	defer cmd.Wait()
-
-	go func() {
-		_, err = io.Copy(stdin, &StreamReader{
-			ReadFunc: func() ([]byte, error) {
-				r, err := stream.Recv()
-				if r != nil {
-					return r.Data, err
-				}
-				return nil, err
-			},
-		})
-		stdin.Close()
-	}()
-
-	_, err = io.Copy(&StreamWriter{
+	rw := &StreamReadWriter{
 		WriteFunc: func(p []byte) error {
 			return stream.Send(&pbSSH.UploadPackResponse{
 				Data: p,
 			})
 		},
-	}, stdout)
-	if err != nil {
-		return err
+		ReadFunc: func() ([]byte, error) {
+			r, err := stream.Recv()
+			if r != nil {
+				return r.Data, err
+			}
+			return nil, err
+		},
 	}
-
-	_, err = io.Copy(&StreamWriter{
+	rwe := &StreamReadWriter{
 		WriteFunc: func(p []byte) error {
 			return stream.Send(&pbSSH.UploadPackResponse{
 				Err: p,
 			})
 		},
-	}, stderr)
+	}
+
+	err = gitsshLib.GitUploadPack(s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
+		log.Println("failed to GitUploadPack", err)
 		return err
 	}
+
 	return nil
 }
 
@@ -540,70 +525,32 @@ func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_Pos
 	repo := c.GetRepository()
 
 	repoPath := filepath.Join(s.RootPath, repo.User, repo.Repo+".git")
-	cmd := exec.Command(s.ShellPath, "-c", fmt.Sprintf("%s '%s'", "git-receive-pack", repoPath))
-	cmd.Dir = repoPath
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
-		return err
-	}
-	defer stdin.Close()
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
-		return err
-	}
-	defer stdout.Close()
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard error. ", err.Error())
-		return err
-	}
-	defer stderr.Close()
-
-	err = cmd.Start()
-	if err != nil {
-		log.Println("failed to starts the specified command. ", err.Error())
-		return err
-	}
-	defer cmd.Wait()
-
-	go func() {
-		_, err = io.Copy(stdin, &StreamReader{
-			ReadFunc: func() ([]byte, error) {
-				r, err := stream.Recv()
-				if r != nil {
-					return r.Data, err
-				}
-				return nil, err
-			},
-		})
-		stdin.Close()
-	}()
-
-	_, err = io.Copy(&StreamWriter{
+	rw := &StreamReadWriter{
 		WriteFunc: func(p []byte) error {
 			return stream.Send(&pbSSH.ReceivePackResponse{
 				Data: p,
 			})
 		},
-	}, stdout)
-	if err != nil {
-		return err
+		ReadFunc: func() ([]byte, error) {
+			r, err := stream.Recv()
+			if r != nil {
+				return r.Data, err
+			}
+			return nil, err
+		},
 	}
-
-	_, err = io.Copy(&StreamWriter{
+	rwe := &StreamReadWriter{
 		WriteFunc: func(p []byte) error {
 			return stream.Send(&pbSSH.ReceivePackResponse{
 				Err: p,
 			})
 		},
-	}, stderr)
+	}
+
+	err = gitsshLib.GitReceivePack(s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
+		log.Println("failed to GitReceivePack", err)
 		return err
 	}
 	return nil
