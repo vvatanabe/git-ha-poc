@@ -42,6 +42,7 @@ $ git clone ssh://git@localhost:2222/foo/test.git
 - [mwitkow/grpc-proxy forks](https://github.com/mwitkow/grpc-proxy/network/members)
 - [Gitaly Cluster](https://docs.gitlab.com/ee/administration/gitaly/praefect.html)
 - [Designing Data-Intensive Applications](https://www.oreilly.com/library/view/designing-data-intensive-applications/9781491903063/)（[データ指向アプリケーションデザイン](https://www.oreilly.co.jp/books/9784873118703/)）
+- [分散システム (第2版)](https://www.kyoritsu-pub.co.jp/bookdetail/9784320124493)
 
 ## Author
 
