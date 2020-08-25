@@ -197,17 +197,17 @@ func (s *ProxyHappySuite) SetupSuite() {
 	// Setup of the proxy's Director.
 	s.serverClientConn, err = grpc.Dial(s.serverListener.Addr().String(), grpc.WithInsecure(), grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())))
 	require.NoError(s.T(), err, "must not error on deferred client Dial")
-	director := func(ctx context.Context, fullName string) (context.Context, *grpc.ClientConn, error) {
+	director := func(ctx context.Context, fullName string) (context.Context, *grpc.ClientConn, func(), error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if ok {
 			if _, exists := md[rejectingMdKey]; exists {
-				return ctx, nil, status.Errorf(codes.PermissionDenied, "testing rejection")
+				return ctx, nil, func() {}, status.Errorf(codes.PermissionDenied, "testing rejection")
 			}
 		}
 		// Explicitly copy the metadata, otherwise the tests will fail.
 		outCtx, _ := context.WithCancel(ctx)
 		outCtx = metadata.NewOutgoingContext(outCtx, md.Copy())
-		return outCtx, s.serverClientConn, nil
+		return outCtx, s.serverClientConn, func() {}, nil
 	}
 	s.proxy = grpc.NewServer(
 		grpc.CustomCodec(proxy.NewCodec()),

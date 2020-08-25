@@ -1,4 +1,4 @@
-# git-ha-poc
+# git-ha-poc ![Go](https://github.com/vvatanabe/git-ha-poc/workflows/Go/badge.svg)
 
 Just a proof of concept for a highly available Git servers.
 
