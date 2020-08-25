@@ -10,6 +10,10 @@ services:
     environment:
       DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
+      WAIT_HOSTS: db:3306
+      WAIT_HOSTS_TIMEOUT: 300
+      WAIT_SLEEP_INTERVAL: 1
+      WAIT_HOST_CONNECT_TIMEOUT: 30
     depends_on:
       - db
 
@@ -48,6 +52,10 @@ services:
     environment:
       DSN: root:deadbeef@tcp(db:3306)/git-ha-poc
       TZ: Asia/Tokyo
+      WAIT_HOSTS: db:3306
+      WAIT_HOSTS_TIMEOUT: 300
+      WAIT_SLEEP_INTERVAL: 1
+      WAIT_HOST_CONNECT_TIMEOUT: 30
     depends_on:
       - db
 

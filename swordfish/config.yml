@@ -1,20 +1,3 @@
 verbose: true
 port: 50051
 dsn: root:deadbeef@tcp(db:3306)/git-ha-poc
-zones:
-  - name: midgar
-    nodes:
-      - addr: tadpole-1-a:50051
-        writable: true
-      - addr: tadpole-2-a:50051
-        writable: false
-      - addr: tadpole-3-b:50051
-        writable: false
-  - name: goldsaucer
-    nodes:
-      - addr: tadpole-4-b:50051
-        writable: true
-      - addr: tadpole-5-b:50051
-        writable: false
-      - addr: tadpole-6-a:50051
-        writable: false

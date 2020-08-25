@@ -37,7 +37,13 @@ var (
 )
 
 func init() {
-	keyPath := "./host_key"
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	keyPath := filepath.Join(home, "host_key")
 
 	hostPrivateKey, err := ioutil.ReadFile(keyPath)
 	if err != nil {

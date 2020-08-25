@@ -25,14 +25,45 @@ type Store struct {
 	db *sql.DB
 }
 
-func (s *Store) GetZoneNameByUserName(name string) (string, error) {
-	row := s.db.QueryRow(`select zone_name from user where name=?`, name)
-	var zoneName string
-	err := row.Scan(&zoneName)
+func (s *Store) GetClusterNameByUserName(name string) (string, error) {
+	row := s.db.QueryRow(`select cluster_name from user where name=?`, name)
+	var clusterName string
+	err := row.Scan(&clusterName)
 	if err != nil {
 		return "", err
 	}
-	return zoneName, nil
+	return clusterName, nil
+}
+
+func (s *Store) GetNodesByClusterName(ctx context.Context, name string) ([]*Node, error) {
+	q := `
+select
+	n.*
+from
+	cluster c join node n on c.name = n.cluster_name
+where c.name=?
+`
+	rows, err := s.db.QueryContext(ctx, q, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var nodes []*Node
+	for rows.Next() {
+		var (
+			node     Node
+			active   int
+			writable int
+		)
+		err := rows.Scan(&node.Name, &node.ClusterName, &node.Addr, &writable, &active)
+		if err != nil {
+			return nil, err
+		}
+		node.Active = active > 0
+		node.Writable = writable > 0
+		nodes = append(nodes, &node)
+	}
+	return nodes, nil
 }
 
 func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
@@ -51,12 +82,15 @@ func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) fu
 			return ctx, nil, nil, errors.New("no repo name in incoming context") // TODO
 		}
 
-		zoneName, err := store.GetZoneNameByUserName(userName)
+		clusterName, err := store.GetClusterNameByUserName(userName)
 		if err != nil {
 			return ctx, nil, nil, err
 		}
 
-		nodes := config.GetNodesByZoneName(zoneName)
+		nodes, err := store.GetNodesByClusterName(ctx, clusterName)
+		if err != nil {
+			return ctx, nil, nil, err
+		}
 		if len(nodes) == 0 {
 			return ctx, nil, nil, errors.New("no nodes")
 		}
@@ -74,7 +108,7 @@ func getDirector(config Config, publisher *jobworker.JobWorker, store *Store) fu
 			return ctx, nil, nil, status.Errorf(codes.Unimplemented, "Unknown method")
 		}
 
-		finishedFunc := getFinishedFunc(publisher, nodes, fullMethodName, zoneName, userName, repoName)
+		finishedFunc := getFinishedFunc(publisher, nodes, fullMethodName, clusterName, userName, repoName)
 
 		if config.Verbose {
 			printInfo(fmt.Sprintf("Found: %s > %s", fullMethodName, node.Addr))
@@ -119,31 +153,33 @@ func getOperation(fullMethodName string) Operation {
 	return Unknown
 }
 
-func selectNode(nodes []Node, ope Operation) *Node {
+func selectNode(nodes []*Node, ope Operation) *Node {
 	shuffle(nodes)
 	switch ope {
 	case Write:
 		for _, node := range nodes {
-			if node.Writable {
-				return &node
+			if node.Active && node.Writable {
+				return node
 			}
 		}
 	case Read:
 		for _, node := range nodes {
-			return &node
+			if node.Active {
+				return node
+			}
 		}
 	}
 	return nil
 }
 
-func shuffle(nodes []Node) {
+func shuffle(nodes []*Node) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(nodes), func(i, j int) {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
 }
 
-func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodName, zone, user, repo string) func() {
+func getFinishedFunc(publisher *jobworker.JobWorker, nodes []*Node, fullMethodName, cluster, user, repo string) func() {
 	return func() {
 
 		t := getReplicationType(fullMethodName)
@@ -154,7 +190,7 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodNam
 		var writerNode *Node
 		for _, node := range nodes {
 			if node.Writable {
-				writerNode = &node
+				writerNode = node
 				break
 			}
 		}
@@ -168,7 +204,7 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []Node, fullMethodNam
 			}
 			content, err := json.Marshal(&ReplicationContent{
 				Type:       t,
-				Zone:       zone,
+				Zone:       cluster,
 				TargetNode: node.Addr,
 				User:       user,
 				Repo:       repo,
@@ -228,7 +264,7 @@ func getCredentials(cache map[string]credentials.TransportCredentials, backend *
 	if cache[backend.Addr] != nil {
 		return cache[backend.Addr]
 	}
-	creds, err := credentials.NewClientTLSFromFile(backend.CertFile, backend.ServerName)
+	creds, err := credentials.NewClientTLSFromFile(backend.CertFile, backend.Name)
 	if err != nil {
 		printFatal(fmt.Sprintf("Failed to create TLS credentials %v", err))
 		return nil
