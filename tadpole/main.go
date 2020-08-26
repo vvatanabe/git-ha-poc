@@ -15,15 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
-
-	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
-	gitsshLib "github.com/vvatanabe/git-ssh-test-server/gitssh"
-	"golang.org/x/crypto/ssh"
-
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
+	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
+	"github.com/vvatanabe/git-ssh-test-server/gitssh"
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 )
 
@@ -102,9 +99,15 @@ func main() {
 		log.Fatalf("failed to listen: %v\n", err)
 	}
 	s := gitssh.Server{
-		RootPath: rootPath,
-		BinPath:  shellPath,
-		Signer:   hostPrivateKeySigner,
+		RepoDir:   rootPath,
+		ShellPath: shellPath,
+		PublicKeyCallback: func(metadata ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			log.Println(metadata.RemoteAddr(), "authenticate with", key.Type())
+			return &ssh.Permissions{
+				Extensions: make(map[string]string),
+			}, nil
+		},
+		Signer: hostPrivateKeySigner,
 	}
 	log.Printf("start ssh server on port%s\n", sshPort)
 	if err := s.Serve(sshLis); err != nil {
@@ -511,7 +514,7 @@ func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_Post
 		},
 	}
 
-	err = gitsshLib.GitUploadPack(s.ShellPath, repoPath, rw, rwe)
+	err = gitssh.GitUploadPack(s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
 		log.Println("failed to GitUploadPack", err)
 		return err
@@ -554,7 +557,7 @@ func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_Pos
 		},
 	}
 
-	err = gitsshLib.GitReceivePack(s.ShellPath, repoPath, rw, rwe)
+	err = gitssh.GitReceivePack(s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
 		log.Println("failed to GitReceivePack", err)
 		return err
