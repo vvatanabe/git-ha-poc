@@ -11,17 +11,18 @@ import (
 	"strconv"
 	"strings"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
 
 	"github.com/gorilla/mux"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
+	"github.com/vvatanabe/git-ha-poc/shared/metadata"
 	"google.golang.org/grpc"
 )
 
 const (
-	port = ":8080"
-
+	port        = ":8080"
 	uploadPack  = "upload-pack"
 	receivePack = "receive-pack"
 )
@@ -31,8 +32,8 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("[crab] ")
 
-	unaryChain := grpc_middleware.ChainUnaryClient(XGitUserUnaryInterceptor, XGitRepoUnaryInterceptor)
-	streamChain := grpc_middleware.ChainStreamClient(XGitUserStreamInterceptor, XGitRepoStreamInterceptor)
+	unaryChain := grpc_middleware.ChainUnaryClient(interceptor.XGitUserUnaryInterceptor, interceptor.XGitRepoUnaryInterceptor)
+	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamInterceptor, interceptor.XGitRepoStreamInterceptor)
 	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"),
 		grpc.WithInsecure(), grpc.WithUnaryInterceptor(unaryChain), grpc.WithStreamInterceptor(streamChain))
 	if err != nil {
@@ -52,8 +53,8 @@ func main() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			vars := mux.Vars(r)
 			ctx := r.Context()
-			ctx = AddUserToContext(ctx, vars["user"])
-			ctx = AddRepoToContext(ctx, vars["repo"])
+			ctx = metadata.AddUserToContext(ctx, vars["user"])
+			ctx = metadata.AddRepoToContext(ctx, vars["repo"])
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
@@ -86,8 +87,8 @@ type GitRepository struct {
 
 func (gr *GitRepository) Create(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 	_, err := gr.client.CreateRepository(ctx, &pbRepository.CreateRepositoryRequest{
 		User: user,
 		Repo: repo,
@@ -108,8 +109,8 @@ type GitHttpTransfer struct {
 func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -160,8 +161,8 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -237,8 +238,8 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 func (t *GitHttpTransfer) GetInfoRefs(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 
 	serviceName := getServiceType(r)
 	var service pbSmart.Service

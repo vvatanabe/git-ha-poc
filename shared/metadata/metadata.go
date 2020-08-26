@@ -1,26 +1,10 @@
-package main
+package metadata
 
 import (
 	"context"
 
 	"google.golang.org/grpc/metadata"
-
-	"google.golang.org/grpc"
 )
-
-func XGitUserStreamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	user := GetUserFromContext(ctx)
-	ctx = AddUserToMetadata(ctx, user)
-	stream, err := streamer(ctx, desc, cc, method, opts...)
-	return stream, err
-}
-
-func XGitRepoStreamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	user := GetRepoFromContext(ctx)
-	ctx = AddRepoToMetadata(ctx, user)
-	stream, err := streamer(ctx, desc, cc, method, opts...)
-	return stream, err
-}
 
 type contextKeyUser struct{}
 type contextKeyRepo struct{}

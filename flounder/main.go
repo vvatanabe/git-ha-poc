@@ -13,6 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vvatanabe/git-ha-poc/shared/metadata"
+
+	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
+
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
 	"github.com/vvatanabe/git-ssh-test-server/gitssh"
@@ -42,7 +46,7 @@ func init() {
 		panic(err)
 	}
 
-	streamChain := grpc_middleware.ChainStreamClient(XGitUserStreamInterceptor, XGitRepoStreamInterceptor)
+	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamInterceptor, interceptor.XGitRepoStreamInterceptor)
 	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithStreamInterceptor(streamChain), grpc.WithInsecure())
 	if err != nil {
 		panic("failed to dial: " + err.Error())
@@ -67,8 +71,8 @@ func main() {
 		GitRequestTransfer: func(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions, gitCmd, repoPath string) error {
 			user, repo := splitRepoPath(repoPath)
 			ctx := context.Background()
-			ctx = AddUserToContext(ctx, user)
-			ctx = AddRepoToContext(ctx, repo)
+			ctx = metadata.AddUserToContext(ctx, user)
+			ctx = metadata.AddRepoToContext(ctx, repo)
 			_ = req.Reply(true, nil)
 			switch gitCmd {
 			case "git-receive-pack":
@@ -126,8 +130,8 @@ type GitSSHTransfer struct {
 
 func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch ssh.Channel, req *ssh.Request) error {
 
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 
 	stream, err := t.client.PostUploadPack(ctx)
 	if err != nil {
@@ -200,8 +204,8 @@ func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch ssh.Channel, req 
 
 func (t *GitSSHTransfer) GitReceivePack(ctx context.Context, ch ssh.Channel) error {
 
-	user := GetUserFromContext(ctx)
-	repo := GetRepoFromContext(ctx)
+	user := metadata.GetUserFromContext(ctx)
+	repo := metadata.GetRepoFromContext(ctx)
 
 	stream, err := t.client.PostReceivePack(ctx)
 	if err != nil {
