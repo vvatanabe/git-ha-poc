@@ -8,16 +8,16 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
-
-	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
+	"syscall"
+	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	"google.golang.org/grpc"
-
-	"github.com/vvatanabe/git-ha-poc/internal/gitssh"
-
+	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
+	"github.com/vvatanabe/git-ssh-test-server/gitssh"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -62,91 +62,62 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v\n", err)
 	}
-	s := gitssh.Server{
-		Handler: handler,
-		Signer:  hostPrivateKeySigner,
-	}
-	log.Printf("start ssh server on port%s\n", sshPort)
-	if err := s.Serve(sshLis); err != nil {
-		log.Fatalf("failed to serve: %v\n", err)
-	}
-}
 
-func handler(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions) {
-	var err error
-	defer func() {
-		if err != nil {
-			sendExit(ch, 1, "failed")
-		} else {
-			sendExit(ch, 0, "")
+	s := gitssh.Server{
+		GitRequestTransfer: func(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions, gitCmd, repoPath string) error {
+			user, repo := splitRepoPath(repoPath)
+			ctx := context.Background()
+			ctx = AddUserToContext(ctx, user)
+			ctx = AddRepoToContext(ctx, repo)
+			_ = req.Reply(true, nil)
+			switch gitCmd {
+			case "git-receive-pack":
+				return gitSSHTransfer.GitReceivePack(ctx, ch)
+			case "git-upload-pack":
+				return gitSSHTransfer.GitUploadPack(ctx, ch, req)
+			default:
+				return errors.New("unknown operation " + gitCmd)
+			}
+		},
+		PublicKeyCallback: func(metadata ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			return &ssh.Permissions{
+				Extensions: make(map[string]string),
+			}, nil
+		},
+		Signer: hostPrivateKeySigner,
+	}
+	go func() {
+		log.Printf("start ssh server on port%s\n", sshPort)
+		if err := s.Serve(sshLis); err != nil {
+			log.Fatalf("failed to serve: %v\n", err)
 		}
-		ch.Close()
 	}()
 
-	subCmd, user, repo := extractPayload(req.Payload)
-	if subCmd == "" || user == "" || repo == "" {
-		return
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+
+	<-done
+
+	log.Println("received a signal")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := s.Shutdown(ctx); err != nil {
+		log.Printf("failed to shutdown: %v\n", err)
 	}
 
-	ctx := context.Background()
-	ctx = AddUserToContext(ctx, user)
-	ctx = AddRepoToContext(ctx, repo)
-
-	_ = req.Reply(true, nil)
-
-	if subCmd == "git-receive-pack" {
-		err = gitSSHTransfer.GitReceivePack(ctx, ch)
-	} else if subCmd == "git-upload-pack" {
-		err = gitSSHTransfer.GitUploadPack(ctx, ch, req)
-	} else {
-		err = errors.New("unknown operation " + subCmd)
-	}
+	log.Println("completed shutdown")
 }
 
-func extractPayload(payload []byte) (subCmd, user, repo string) {
-
-	payloadStr := string(payload)
-
-	i := strings.Index(payloadStr, "git")
-	if i == -1 {
-		return
-	}
-
-	cmdArgs := strings.Split(payloadStr[i:], " ")
-
-	if len(cmdArgs) != 2 {
-		return
-	}
-
-	cmd := cmdArgs[0]
-	if !(cmd == "git-receive-pack" || cmd == "git-upload-pack") {
-		return
-	}
-
-	path := cmdArgs[1]
-	path = strings.Trim(path, "'")
-
-	splitPath := strings.Split(path, "/")
+func splitRepoPath(repoPath string) (user, repo string) {
+	splitPath := strings.Split(repoPath, "/")
 	if len(splitPath) != 3 {
 		return
 	}
-
-	subCmd = cmd
 	user = splitPath[1]
 	repo = strings.TrimSuffix(splitPath[2], ".git")
 	return
-}
-
-func sendExit(ch ssh.Channel, code uint8, msg string) {
-	if code == 0 && msg != "" {
-		ch.Write([]byte(msg + "\r\n"))
-	} else {
-		ch.Stderr().Write([]byte(msg + "\r\n"))
-	}
-	_, err := ch.SendRequest("exit-status", false, []byte{0, 0, 0, code})
-	if err != nil {
-		log.Println(err)
-	}
 }
 
 type GitSSHTransfer struct {
