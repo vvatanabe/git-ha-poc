@@ -9,7 +9,7 @@ import (
 type contextKeyUser struct{}
 type contextKeyRepo struct{}
 
-func GetUserFromContext(ctx context.Context) string {
+func UserFromContext(ctx context.Context) string {
 	u := ctx.Value(contextKeyUser{})
 	user, ok := u.(string)
 	if !ok {
@@ -18,7 +18,7 @@ func GetUserFromContext(ctx context.Context) string {
 	return user
 }
 
-func GetRepoFromContext(ctx context.Context) string {
+func RepoFromContext(ctx context.Context) string {
 	u := ctx.Value(contextKeyRepo{})
 	repo, ok := u.(string)
 	if !ok {
@@ -27,13 +27,11 @@ func GetRepoFromContext(ctx context.Context) string {
 	return repo
 }
 
-func AddUserToContext(ctx context.Context,
-	user string) context.Context {
+func ContextWithUser(ctx context.Context, user string) context.Context {
 	return context.WithValue(ctx, contextKeyUser{}, user)
 }
 
-func AddRepoToContext(ctx context.Context,
-	repo string) context.Context {
+func ContextWithRepo(ctx context.Context, repo string) context.Context {
 	return context.WithValue(ctx, contextKeyRepo{}, repo)
 }
 
@@ -42,10 +40,34 @@ const (
 	metadataKeyRepo string = "x-git-repo"
 )
 
-func AddUserToMetadata(ctx context.Context, user string) context.Context {
+func AppendUserToOutgoingContext(ctx context.Context, user string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, metadataKeyUser, user)
 }
 
-func AddRepoToMetadata(ctx context.Context, repo string) context.Context {
+func AppendRepoToOutgoingContext(ctx context.Context, repo string) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, metadataKeyRepo, repo)
+}
+
+func GetUserFromIncomingContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(metadataKeyUser)
+	if len(values) < 1 {
+		return ""
+	}
+	return values[0]
+}
+
+func GetRepoFromIncomingContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(metadataKeyRepo)
+	if len(values) < 1 {
+		return ""
+	}
+	return values[0]
 }

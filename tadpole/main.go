@@ -15,6 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
+
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
@@ -70,7 +73,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to listen: %v\n", err)
 		}
-		s := grpc.NewServer()
+		s := grpc.NewServer(grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			interceptor.LoggingUnaryServerInterceptor(),
+		)), grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+			interceptor.LoggingStreamServerInterceptor()),
+		))
 
 		pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
 			RootPath: rootPath,
@@ -455,6 +462,7 @@ func (s StreamReader) Read(p []byte) (n int, err error) {
 }
 
 func (s *SmartProtocolService) GetInfoRefs(ctx context.Context, request *pbSmart.InfoRefsRequest) (*pbSmart.InfoRefsResponse, error) {
+
 	var serviceName string
 	switch request.Service {
 	case pbSmart.Service_UPLOAD_PACK:
@@ -462,13 +470,25 @@ func (s *SmartProtocolService) GetInfoRefs(ctx context.Context, request *pbSmart
 	case pbSmart.Service_RECEIVE_PACK:
 		serviceName = "receive-pack"
 	}
+
+	repoPath := s.getAbsolutePath(path.Join(request.Repository.User, request.Repository.Repo+".git"))
+
+	info, err := os.Stat(repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("not exisits %s: %w", repoPath, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("not dir %s: %w", repoPath, err)
+	}
+
 	args := []string{serviceName, "--stateless-rpc", "--advertise-refs", "."}
-	cmd := exec.CommandContext(ctx, s.BinPath, args...)
-	cmd.Dir = s.getAbsolutePath(path.Join(request.Repository.User, request.Repository.Repo+".git"))
+	cmd := exec.Command(s.BinPath, args...)
+	cmd.Dir = repoPath
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 	refs, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to exec service %s %s: %w", serviceName, repoPath, err)
 	}
 	return &pbSmart.InfoRefsResponse{
 		Data: refs,

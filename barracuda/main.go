@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -15,33 +16,42 @@ import (
 	"github.com/go-jwdk/jobworker"
 	mysqlConn "github.com/go-jwdk/mysql-connector"
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
+	"github.com/vvatanabe/git-ha-poc/shared/replication"
 	"google.golang.org/grpc"
 )
 
-const replicationQueueName = "replication"
+const (
+	appName = "barracuda"
+)
+
+var (
+	dsn string
+)
+
+func init() {
+	log.SetFlags(0)
+	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
+
+	dsn = os.Getenv("DSN")
+}
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("[barracuda] ")
-
 	jwConn, err := mysqlConn.Open(&mysqlConn.Config{
-		DSN: os.Getenv("DSN"),
+		DSN: dsn,
 	})
 	if err != nil {
-		// TODO
 		log.Fatalln("failed to open conn", err)
 	}
 	jwConn.SetLoggerFunc(log.Println)
 
 	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
-		Name:              replicationQueueName,
+		Name:              replication.LogQueueName,
 		DelaySeconds:      2,
 		VisibilityTimeout: 60,
 		MaxReceiveCount:   10,
-		DeadLetterTarget:  "",
 	})
 	if err != nil {
-		log.Fatalln("failed to create queue", err)
+		log.Fatalln("failed to create replication log queue", err)
 	}
 
 	worker, err := jobworker.New(&jobworker.Setting{
@@ -50,89 +60,77 @@ func main() {
 		LoggerFunc:                 log.Println,
 	})
 	if err != nil {
-		// TODO
 		log.Fatalln("failed to init worker", err)
 	}
 
-	worker.Register(replicationQueueName, &ReplicationWorker{})
+	worker.RegisterFunc(replication.LogQueueName, replicate)
 
 	go func() {
-		log.Println("Start work")
+		log.Println("start replication worker")
 		err := worker.Work(&jobworker.WorkSetting{
 			WorkerConcurrency: 5,
 		})
 		if err != nil {
-			log.Println("failed to work", err)
+			log.Println("failed to start replication worker", err)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
 	<-quit
+
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
-	log.Println("Received a signal of graceful shutdown")
+
 	if err := worker.Shutdown(ctx); err != nil {
-		log.Println("Failed to graceful shutdown:", err)
+		log.Println("failed to shutdown:", err)
 	}
-	log.Println("Completed graceful shutdown")
+	log.Println("completed shutdown")
 
 }
 
-type ReplicationContent struct {
-	Type       ReplicationType `json:"type"`
-	User       string          `json:"user"`
-	Repo       string          `json:"repo"`
-	TargetNode string          `json:"target_node"`
-	RemoteNode string          `json:"remote_node"`
-	Zone       string          `json:"zone"`
-}
+func replicate(job *jobworker.Job) error {
 
-type ReplicationType string
-
-const (
-	CreateRepo ReplicationType = "CreateRepo"
-	UpdateRepo ReplicationType = "UpdateRepo"
-)
-
-type ReplicationWorker struct {
-}
-
-func (r *ReplicationWorker) Work(job *jobworker.Job) error {
-	var content ReplicationContent
-	err := json.Unmarshal([]byte(job.Content), &content)
+	var rLog replication.Log
+	err := json.Unmarshal([]byte(job.Content), &rLog)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal replication log: %w", err)
 	}
-	conn, err := grpc.Dial(content.TargetNode, grpc.WithInsecure())
+
+	conn, err := grpc.Dial(rLog.TargetNode, grpc.WithInsecure())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to dial replication target node: %w", err)
 	}
 	defer conn.Close()
+
 	client := pbReplication.NewReplicationServiceClient(conn)
-	if content.Type == CreateRepo {
-		_, err = client.CreateRepository(context.Background(), &pbReplication.CreateRepositoryRequest{
-			Repository: &pbReplication.Repository{
-				User: content.User,
-				Repo: content.Repo,
-			},
-			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
+	ctx := context.Background()
+	repo := &pbReplication.Repository{
+		User: rLog.User,
+		Repo: rLog.Repo,
+	}
+	remoteAddr := strings.Split(rLog.RemoteNode, ":")[0]
+
+	switch rLog.Operation {
+	case replication.CreateRepo:
+		_, err = client.CreateRepository(ctx, &pbReplication.CreateRepositoryRequest{
+			Repository: repo,
+			RemoteAddr: remoteAddr,
 		})
-	} else if content.Type == UpdateRepo {
+	case replication.UpdateRepo:
 		_, err = client.SyncRepository(context.Background(), &pbReplication.SyncRepositoryRequest{
-			Repository: &pbReplication.Repository{
-				User: content.User,
-				Repo: content.Repo,
-			},
-			RemoteAddr: strings.Split(content.RemoteNode, ":")[0],
+			Repository: repo,
+			RemoteAddr: remoteAddr,
 		})
-	} else {
-		return errors.New("unknown type: " + string(content.Type))
+	default:
+		return errors.New("unknown type operation: " + string(rLog.Operation))
 	}
 	if err != nil {
-		log.Println("failed replication ", err)
+		log.Println("failed to replication ", err)
 		return err
 	}
+
 	return nil
 }

@@ -11,31 +11,41 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
-
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
+	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
 	"github.com/vvatanabe/git-ha-poc/shared/metadata"
 	"google.golang.org/grpc"
 )
 
 const (
+	appName     = "barracuda"
 	port        = ":8080"
 	uploadPack  = "upload-pack"
 	receivePack = "receive-pack"
 )
 
+var (
+	dsn           string
+	swordfishAddr string
+)
+
+func init() {
+	log.SetFlags(0)
+	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
+
+	dsn = os.Getenv("DSN")
+	swordfishAddr = os.Getenv("SWORDFISH_ADDR")
+}
+
 func main() {
 
-	log.SetFlags(0)
-	log.SetPrefix("[crab] ")
-
-	unaryChain := grpc_middleware.ChainUnaryClient(interceptor.XGitUserUnaryInterceptor, interceptor.XGitRepoUnaryInterceptor)
-	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamInterceptor, interceptor.XGitRepoStreamInterceptor)
-	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"),
-		grpc.WithInsecure(), grpc.WithUnaryInterceptor(unaryChain), grpc.WithStreamInterceptor(streamChain))
+	unaryChain := grpc_middleware.ChainUnaryClient(interceptor.XGitUserUnaryClientInterceptor, interceptor.XGitRepoUnaryClientInterceptor)
+	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamClientInterceptor, interceptor.XGitRepoStreamClientInterceptor)
+	conn, err := grpc.Dial(swordfishAddr, grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(unaryChain), grpc.WithStreamInterceptor(streamChain))
 	if err != nil {
 		log.Fatalf("failed to dial: %s", err)
 	}
@@ -53,8 +63,8 @@ func main() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			vars := mux.Vars(r)
 			ctx := r.Context()
-			ctx = metadata.AddUserToContext(ctx, vars["user"])
-			ctx = metadata.AddRepoToContext(ctx, vars["repo"])
+			ctx = metadata.ContextWithUser(ctx, vars["user"])
+			ctx = metadata.ContextWithRepo(ctx, vars["repo"])
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
@@ -87,15 +97,16 @@ type GitRepository struct {
 
 func (gr *GitRepository) Create(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
+
 	_, err := gr.client.CreateRepository(ctx, &pbRepository.CreateRepositoryRequest{
 		User: user,
 		Repo: repo,
 	})
 	if err != nil {
 		log.Println("failed to create a repository. ", err.Error())
-		RenderInternalServerError(rw)
+		renderInternalServerError(rw)
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
@@ -109,8 +120,8 @@ type GitHttpTransfer struct {
 func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -118,8 +129,8 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		body, err = gzip.NewReader(r.Body)
 		if err != nil {
-			log.Println("failed to create a reader reading the given reader. ", err.Error())
-			RenderInternalServerError(rw)
+			log.Println("failed to create a reader reading the given reader. ", err)
+			renderInternalServerError(rw)
 			return
 		}
 	} else {
@@ -138,11 +149,11 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 		Data: buf.Bytes(),
 	})
 	if err != nil {
-		RenderInternalServerError(rw)
+		renderInternalServerError(rw)
 		return
 	}
 
-	rw.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", uploadPack))
+	rw.Header().Set("Content-Operation", fmt.Sprintf("application/x-git-%s-result", uploadPack))
 	rw.WriteHeader(http.StatusOK)
 
 	for {
@@ -151,7 +162,7 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 			break
 		}
 		if err != nil {
-			RenderInternalServerError(rw)
+			renderInternalServerError(rw)
 			return
 		}
 		rw.Write(c.Data)
@@ -161,8 +172,8 @@ func (t *GitHttpTransfer) GitUploadPack(rw http.ResponseWriter, r *http.Request)
 func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
 
 	var body io.ReadCloser
 	var err error
@@ -170,8 +181,8 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		body, err = gzip.NewReader(r.Body)
 		if err != nil {
-			log.Println("failed to create a reader reading the given reader. ", err.Error())
-			RenderInternalServerError(rw)
+			log.Println("failed to create a reader reading the given reader. ", err)
+			renderInternalServerError(rw)
 			return
 		}
 	} else {
@@ -181,7 +192,7 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 
 	stream, err := t.client.PostReceivePack(ctx)
 	if err != nil {
-		RenderInternalServerError(rw)
+		renderInternalServerError(rw)
 		return
 	}
 	defer func() {
@@ -201,7 +212,7 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 		},
 	})
 	if err != nil {
-		RenderInternalServerError(rw)
+		renderInternalServerError(rw)
 		return
 	}
 
@@ -218,7 +229,7 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 				Data: buf[:n],
 			})
 			if err != nil {
-				RenderInternalServerError(rw)
+				renderInternalServerError(rw)
 				return
 			}
 		}
@@ -226,20 +237,20 @@ func (t *GitHttpTransfer) GitReceivePack(rw http.ResponseWriter, r *http.Request
 			break
 		}
 		if err != nil {
-			RenderInternalServerError(rw)
+			renderInternalServerError(rw)
 			return
 		}
 	}
 
-	rw.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", receivePack))
+	rw.Header().Set("Content-Operation", fmt.Sprintf("application/x-git-%s-result", receivePack))
 	rw.WriteHeader(http.StatusOK)
 }
 
 func (t *GitHttpTransfer) GetInfoRefs(rw http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
 
 	serviceName := getServiceType(r)
 	var service pbSmart.Service
@@ -259,7 +270,7 @@ func (t *GitHttpTransfer) GetInfoRefs(rw http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		RenderNotFound(rw)
+		renderNotFound(rw)
 		return
 	}
 
@@ -285,31 +296,14 @@ func getServiceType(req *http.Request) string {
 	return strings.Replace(serviceType, "git-", "", 1)
 }
 
-func RenderMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-	if r.Proto == "HTTP/1.1" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(http.StatusText(http.StatusMethodNotAllowed)))
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(http.StatusText(http.StatusBadRequest)))
-	}
-}
-
-func RenderNotFound(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain")
+func renderNotFound(w http.ResponseWriter) {
+	w.Header().Set("Content-Operation", "text/plain")
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte(http.StatusText(http.StatusNotFound)))
 }
 
-func RenderNoAccess(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusForbidden)
-	w.Write([]byte(http.StatusText(http.StatusForbidden)))
-}
-
-func RenderInternalServerError(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain")
+func renderInternalServerError(w http.ResponseWriter) {
+	w.Header().Set("Content-Operation", "text/plain")
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
 }

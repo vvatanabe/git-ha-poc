@@ -8,17 +8,14 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
+
+	"github.com/vvatanabe/git-ha-poc/shared/replication"
 
 	dbconn "github.com/go-jwdk/db-connector"
 	"github.com/go-jwdk/jobworker"
 	"github.com/go-jwdk/mysql-connector"
-
-	"github.com/spf13/viper"
-
-	"github.com/spf13/cobra"
 
 	"github.com/vvatanabe/git-ha-poc/internal/grpc-proxy/proxy"
 	"google.golang.org/grpc"
@@ -26,125 +23,72 @@ import (
 )
 
 const (
-	cmdName = "grpc-proxyd"
-
-	flagNameConfig   = "config"
-	flagNameVerbose  = "verbose"
-	flagNamePort     = "port"
-	flagNameCertFile = "cert_file"
-	flagNameKeyFile  = "key_file"
-	flagNameDSN      = "dsn"
+	appName = "swordfish"
+	port    = 50051
 )
 
 var (
-	envPrefix = "GRPC_PROXYD"
-
-	config Config
+	dsn      string
+	certFile string
+	keyFile  string
 )
+
+func init() {
+	log.SetFlags(0)
+	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
+
+	dsn = os.Getenv("DSN")
+	certFile = os.Getenv("CERT_FILE")
+	keyFile = os.Getenv("KEY_FILE")
+}
 
 func main() {
 
-	rootCmd := &cobra.Command{
-		Use: cmdName,
-		Run: run,
-	}
-
-	flags := rootCmd.PersistentFlags()
-
-	flags.StringP(flagNameConfig, "c", "config.yml", "config file path")
-	flags.BoolP(flagNameVerbose, "v", false, fmt.Sprintf("debug mode [%s_%s]", envPrefix, strings.ToUpper(flagNameVerbose)))
-	flags.IntP(flagNamePort, "p", 50051, fmt.Sprintf("listen port [%s_%s]", envPrefix, strings.ToUpper(flagNamePort)))
-	flags.String(flagNameCertFile, "", fmt.Sprintf("cert file path [%s_%s]", envPrefix, strings.ToUpper(flagNameCertFile)))
-	flags.String(flagNameKeyFile, "", fmt.Sprintf("key file path [%s_%s]", envPrefix, strings.ToUpper(flagNameKeyFile)))
-	flags.String(flagNameDSN, "", "data source name for replication queue")
-
-	_ = viper.BindPFlag(flagNameVerbose, flags.Lookup(flagNameVerbose))
-	_ = viper.BindPFlag(flagNamePort, flags.Lookup(flagNamePort))
-	_ = viper.BindPFlag(flagNameCertFile, flags.Lookup(flagNameCertFile))
-	_ = viper.BindPFlag(flagNameKeyFile, flags.Lookup(flagNameKeyFile))
-	_ = viper.BindPFlag(flagNameDSN, flags.Lookup(flagNameDSN))
-
-	cobra.OnInitialize(func() {
-		configFile, err := flags.GetString(flagNameConfig)
-		if err != nil {
-			printFatal("failed to parse flag of config path", err)
-		}
-		viper.SetConfigFile(configFile)
-		viper.SetConfigType("yaml")
-		viper.SetEnvPrefix(envPrefix)
-		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-		viper.AutomaticEnv()
-		if err := viper.ReadInConfig(); err != nil {
-			printFatal("failed to read config", err)
-		}
-		if err := viper.Unmarshal(&config); err != nil {
-			printFatal("failed to unmarshal config", err)
-		}
-	})
-
-	if err := rootCmd.Execute(); err != nil {
-		printFatal(err)
-	}
-}
-
-const replicationQueueName = "replication"
-
-func run(cmd *cobra.Command, args []string) {
-
-	// debug config
-	if config.Verbose {
-		printDebug(fmt.Sprintf("config: %#v", config))
-	}
-
-	db, err := sql.Open("mysql", config.DSN)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		printFatal("failed to open conn of mysql", err)
+		log.Fatalln("failed to open conn of mysql", err)
 	}
 	store := &Store{db: db}
 
-	// init replication worker
 	jwConn, err := mysql.Open(&mysql.Config{
-		DSN: config.DSN,
+		DSN: dsn,
 	})
 	if err != nil {
-		printFatal("failed to open conn of job queue", err)
+		log.Fatalln("failed to open conn of job queue", err)
 	}
-	jwConn.SetLoggerFunc(printInfo)
+	jwConn.SetLoggerFunc(log.Println)
 
 	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
-		Name:              replicationQueueName,
+		Name:              replication.LogQueueName,
 		DelaySeconds:      2,
 		VisibilityTimeout: 60,
 		MaxReceiveCount:   10,
 		DeadLetterTarget:  "",
 	})
 	if err != nil {
-		printFatal("failed to create queue", err)
+		log.Fatalln("failed to create replication log queue", err)
 	}
 
 	publisher, err := jobworker.New(&jobworker.Setting{
 		Primary:                    jwConn,
 		DeadConnectorRetryInterval: 3,
-		LoggerFunc:                 printInfo,
+		LoggerFunc:                 log.Println,
 	})
 	if err != nil {
-		printFatal("failed to init worker", err)
+		log.Fatalln("failed to init replication worker", err)
 	}
 	defer publisher.Shutdown(context.Background())
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
-
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		printFatal("failed to listen", err)
+		log.Fatalln("failed to listen", err)
 	}
 
-	printInfo("proxy running at %s", lis.Addr())
-
-	server := newServer(config, publisher, store)
+	server := newServer(publisher, store)
 
 	go func() {
 		if err := server.Serve(lis); err != nil {
-			printFatal("failed to serve: %v", err)
+			log.Println("failed to serve", err)
 		}
 	}()
 
@@ -153,52 +97,32 @@ func run(cmd *cobra.Command, args []string) {
 
 	<-sigint
 
-	printInfo("received a signal of graceful shutdown")
+	log.Println("received a signal")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	go func() {
 		<-ctx.Done()
-		printError("failed to graceful shutdown", err)
+		log.Println("timeout shutdown", err)
 		server.Stop()
 	}()
 	server.GracefulStop()
-	printInfo("completed graceful shutdown")
+	log.Println("completed shutdown")
 }
 
-func newServer(config Config, publisher *jobworker.JobWorker, store *Store) *grpc.Server {
+func newServer(publisher *jobworker.JobWorker, store *Store) *grpc.Server {
 	var opts []grpc.ServerOption
 
 	opts = append(opts, grpc.CustomCodec(proxy.NewCodec()),
-		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(config, publisher, store))))
+		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(publisher, store))))
 
-	if config.CertFile != "" && config.KeyFile != "" {
-		creds, err := credentials.NewServerTLSFromFile(config.CertFile, config.KeyFile)
+	if certFile != "" && keyFile != "" {
+		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
-			printFatal("Failed to generate credentials", err)
+			log.Fatalf("Failed to generate credentials: %v\n", err)
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
 
 	return grpc.NewServer(opts...)
-}
-
-func printDebug(args ...interface{}) {
-	args = append([]interface{}{cmdName + ":", "[DEBUG]"}, args...)
-	log.Println(args...)
-}
-
-func printInfo(args ...interface{}) {
-	args = append([]interface{}{cmdName + ":", "[INFO]"}, args...)
-	log.Println(args...)
-}
-
-func printError(args ...interface{}) {
-	args = append([]interface{}{cmdName + ":", "[ERROR]"}, args...)
-	log.Println(args...)
-}
-
-func printFatal(args ...interface{}) {
-	args = append([]interface{}{cmdName + ":", "[Fatal]"}, args...)
-	log.Fatalln(args...)
 }

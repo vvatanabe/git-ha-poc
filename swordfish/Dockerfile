@@ -13,7 +13,6 @@ RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go install $SERVICE_PATH
 FROM alpine:3.12
 ENV TZ Asia/Tokyo
 COPY --from=0 /go/bin/swordfish /go/bin/swordfish
-COPY --from=0 /go/src/github.com/vvatanabe/git-ha-poc/swordfish/config.yml .
 
 ENV WAIT_VERSION 2.7.2
 ADD https://github.com/ufoscout/docker-compose-wait/releases/download/$WAIT_VERSION/wait /wait

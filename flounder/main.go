@@ -46,7 +46,9 @@ func init() {
 		panic(err)
 	}
 
-	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamInterceptor, interceptor.XGitRepoStreamInterceptor)
+	// do not use unary interceptor
+	// unaryChain := grpc_middleware.ChainUnaryClient(interceptor.XGitUserUnaryClientInterceptor, interceptor.XGitRepoUnaryClientInterceptor)
+	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamClientInterceptor, interceptor.XGitRepoStreamClientInterceptor)
 	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithStreamInterceptor(streamChain), grpc.WithInsecure())
 	if err != nil {
 		panic("failed to dial: " + err.Error())
@@ -71,8 +73,8 @@ func main() {
 		GitRequestTransfer: func(ch ssh.Channel, req *ssh.Request, perms *ssh.Permissions, gitCmd, repoPath string) error {
 			user, repo := splitRepoPath(repoPath)
 			ctx := context.Background()
-			ctx = metadata.AddUserToContext(ctx, user)
-			ctx = metadata.AddRepoToContext(ctx, repo)
+			ctx = metadata.ContextWithUser(ctx, user)
+			ctx = metadata.ContextWithRepo(ctx, repo)
 			_ = req.Reply(true, nil)
 			switch gitCmd {
 			case "git-receive-pack":
@@ -130,8 +132,8 @@ type GitSSHTransfer struct {
 
 func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch ssh.Channel, req *ssh.Request) error {
 
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
 
 	stream, err := t.client.PostUploadPack(ctx)
 	if err != nil {
@@ -204,8 +206,8 @@ func (t *GitSSHTransfer) GitUploadPack(ctx context.Context, ch ssh.Channel, req 
 
 func (t *GitSSHTransfer) GitReceivePack(ctx context.Context, ch ssh.Channel) error {
 
-	user := metadata.GetUserFromContext(ctx)
-	repo := metadata.GetRepoFromContext(ctx)
+	user := metadata.UserFromContext(ctx)
+	repo := metadata.RepoFromContext(ctx)
 
 	stream, err := t.client.PostReceivePack(ctx)
 	if err != nil {
