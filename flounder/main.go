@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,60 +14,53 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vvatanabe/git-ha-poc/shared/metadata"
-
-	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
-
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
+	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
+	"github.com/vvatanabe/git-ha-poc/shared/metadata"
 	"github.com/vvatanabe/git-ssh-test-server/gitssh"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 )
 
 const (
-	sshPort = ":2222"
+	appName = "flounder"
+	port    = 2222
+	keyPath = "/root/host_key"
 )
 
 var (
-	hostPrivateKeySigner ssh.Signer
-	gitSSHTransfer       *GitSSHTransfer
+	swordfishAddr string
 )
 
 func init() {
-	keyPath := "/root/host_key"
+	log.SetFlags(0)
+	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
+	swordfishAddr = os.Getenv("SWORDFISH_ADDR")
+}
+
+func main() {
 
 	hostPrivateKey, err := ioutil.ReadFile(keyPath)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to read host %s %v\n", keyPath, err)
 	}
 
-	hostPrivateKeySigner, err = ssh.ParsePrivateKey(hostPrivateKey)
+	hostPrivateKeySigner, err := ssh.ParsePrivateKey(hostPrivateKey)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to parse private key %s %v\n", keyPath, err)
 	}
 
 	// do not use unary interceptor
 	// unaryChain := grpc_middleware.ChainUnaryClient(interceptor.XGitUserUnaryClientInterceptor, interceptor.XGitRepoUnaryClientInterceptor)
 	streamChain := grpc_middleware.ChainStreamClient(interceptor.XGitUserStreamClientInterceptor, interceptor.XGitRepoStreamClientInterceptor)
-	conn, err := grpc.Dial(os.Getenv("SWORDFISH_ADDR"), grpc.WithStreamInterceptor(streamChain), grpc.WithInsecure())
+	conn, err := grpc.Dial(swordfishAddr, grpc.WithStreamInterceptor(streamChain), grpc.WithInsecure())
 	if err != nil {
-		panic("failed to dial: " + err.Error())
+		log.Fatalln("failed to dial:", err)
 	}
 
-	gitSSHTransfer = &GitSSHTransfer{
+	gitSSHTransfer := &GitSSHTransfer{
 		client: pbSSH.NewSSHProtocolServiceClient(conn),
-	}
-}
-
-func main() {
-
-	log.SetFlags(0)
-	log.SetPrefix("[flounder] ")
-
-	sshLis, err := net.Listen("tcp", sshPort)
-	if err != nil {
-		log.Fatalf("failed to listen: %v\n", err)
 	}
 
 	s := gitssh.Server{
@@ -92,8 +86,14 @@ func main() {
 		},
 		Signer: hostPrivateKeySigner,
 	}
+
+	sshLis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Fatalln("failed to listen:", err)
+	}
+
 	go func() {
-		log.Printf("start ssh server on port%s\n", sshPort)
+		log.Printf("start ssh server on port: %d\n", port)
 		if err := s.Serve(sshLis); err != nil {
 			log.Fatalf("failed to serve: %v\n", err)
 		}
