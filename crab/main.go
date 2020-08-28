@@ -22,7 +22,7 @@ import (
 
 const (
 	appName     = "barracuda"
-	port        = ":8080"
+	port        = 8080
 	uploadPack  = "upload-pack"
 	receivePack = "receive-pack"
 )
@@ -85,7 +85,7 @@ func main() {
 
 	log.Println("start server on port", port)
 
-	err = http.ListenAndServe(port, r)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", port), r)
 	if err != nil {
 		log.Println("failed to exit serve: ", err)
 	}
