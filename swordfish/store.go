@@ -25,7 +25,7 @@ select
 	n.*
 from
 	cluster c join node n on c.name = n.cluster_name
-where c.name=?
+where c.name=? and n.active = 1
 `
 	rows, err := s.db.QueryContext(ctx, q, name)
 	if err != nil {

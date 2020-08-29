@@ -38,6 +38,11 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 
 	return func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, func(), error) {
 
+		ope := getOperation(fullMethodName)
+		if ope == Unknown {
+			return ctx, nil, nil, errors.New("unknown operation: " + fullMethodName)
+		}
+
 		userName := metadata.GetUserFromIncomingContext(ctx)
 		if len(userName) < 1 {
 			return ctx, nil, nil, errors.New("no user name in incoming context")
@@ -61,23 +66,46 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 			return ctx, nil, nil, errors.New("no nodes")
 		}
 
-		ope := getOperation(fullMethodName)
-		if ope == Unknown {
-			return ctx, nil, nil, errors.New("unknown operation: " + fullMethodName)
+		shuffle(nodes)
+
+		switch ope {
+		case Read:
+			var activeConn *grpc.ClientConn
+			for _, node := range nodes {
+				conn, err := connMgr.GetConn(node.Addr)
+				if err != nil {
+					log.Println("failed to get conn:", err)
+					continue
+				}
+				activeConn = conn
+			}
+			if activeConn == nil {
+				return ctx, nil, nil, errors.New("could not select node")
+			}
+			log.Printf("found reader node: %s > %s\n", fullMethodName, activeConn.Target())
+			return ctx, activeConn, func() {}, err
+		case Write:
+			var (
+				primaryNode    *Node
+				secondaryNodes []*Node
+			)
+			for _, node := range nodes {
+				if node.Writable {
+					primaryNode = node
+				} else {
+					secondaryNodes = append(secondaryNodes, node)
+				}
+			}
+			conn, err := connMgr.GetConn(primaryNode.Addr)
+			if err != nil {
+				return ctx, nil, nil, fmt.Errorf("could not select writer node: %w", err)
+			}
+			log.Printf("found writer node: %s > %s\n", fullMethodName, conn.Target())
+			finishedFunc := getFinishedFunc(publisher, primaryNode, secondaryNodes, fullMethodName, clusterName, userName, repoName)
+			return ctx, conn, finishedFunc, err
 		}
 
-		node := selectNode(nodes, ope)
-		if node == nil {
-			return ctx, nil, nil, errors.New("could not select node")
-		}
-
-		finishedFunc := getFinishedFunc(publisher, nodes, fullMethodName, clusterName, userName, repoName)
-
-		log.Printf("found rpc: %s > %s\n", fullMethodName, node.Addr)
-
-		conn, err := connMgr.GetConn(node.Addr)
-
-		return ctx, conn, finishedFunc, err
+		return ctx, nil, func() {}, errors.New("not found active node")
 	}
 }
 
@@ -175,7 +203,7 @@ func shuffle(nodes []*Node) {
 	})
 }
 
-func getFinishedFunc(publisher *jobworker.JobWorker, nodes []*Node, fullMethodName, cluster, user, repo string) func() {
+func getFinishedFunc(publisher *jobworker.JobWorker, src *Node, dests []*Node, fullMethodName, cluster, user, repo string) func() {
 	return func() {
 
 		t := getReplicationOperation(fullMethodName)
@@ -184,29 +212,17 @@ func getFinishedFunc(publisher *jobworker.JobWorker, nodes []*Node, fullMethodNa
 			return
 		}
 
-		var writerNode *Node
-		for _, node := range nodes {
-			if node.Writable {
-				writerNode = node
-				break
-			}
-		}
-		if writerNode == nil {
-			log.Println("not found writer node")
-			return
-		}
-
 		var entries []*jobworker.EnqueueBatchEntry
-		for i, node := range nodes {
-			if node.Writable {
+		for i, dest := range dests {
+			if dest.Writable {
 				continue
 			}
 			content, err := json.Marshal(&replication.Log{
 				Operation:  t,
 				User:       user,
 				Repo:       repo,
-				TargetNode: node.Addr,
-				RemoteNode: writerNode.Addr,
+				TargetNode: dest.Addr,
+				RemoteNode: src.Addr,
 				Cluster:    cluster,
 			})
 			if err != nil {

@@ -80,7 +80,7 @@ services:
       TZ: Asia/Tokyo
   tadpole-3-b:
     image: git-ha-poc/tadpole
-    container_name: tadpole-3-a
+    container_name: tadpole-3-b
     environment:
       TZ: Asia/Tokyo
   tadpole-4-b:
