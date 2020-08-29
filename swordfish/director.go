@@ -96,6 +96,9 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 					secondaryNodes = append(secondaryNodes, node)
 				}
 			}
+			if primaryNode == nil {
+				return ctx, nil, nil, errors.New("could not select writer node")
+			}
 			conn, err := connMgr.GetConn(primaryNode.Addr)
 			if err != nil {
 				return ctx, nil, nil, fmt.Errorf("could not select writer node: %w", err)
