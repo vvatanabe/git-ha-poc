@@ -15,6 +15,8 @@ import (
 	"github.com/vvatanabe/git-ssh-test-server/gitssh"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	pbHealth "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 const (
@@ -54,6 +56,8 @@ func main() {
 		)), grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			interceptor.LoggingStreamServerInterceptor()),
 		))
+
+		pbHealth.RegisterHealthServer(s, health.NewServer())
 
 		pbSmart.RegisterSmartProtocolServiceServer(s, &SmartProtocolService{
 			RootPath: repoDir,

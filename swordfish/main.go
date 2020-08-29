@@ -11,20 +11,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vvatanabe/git-ha-poc/shared/replication"
-
 	dbconn "github.com/go-jwdk/db-connector"
 	"github.com/go-jwdk/jobworker"
 	"github.com/go-jwdk/mysql-connector"
-
 	"github.com/vvatanabe/git-ha-poc/internal/grpc-proxy/proxy"
+	"github.com/vvatanabe/git-ha-poc/shared/replication"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
 
 const (
-	appName = "swordfish"
-	port    = 50051
+	appName            = "swordfish"
+	port               = 50051
+	connMaxLifetime    = 10 * time.Second
+	connInactiveExpire = 3 * time.Second
 )
 
 var (
@@ -34,6 +34,7 @@ var (
 )
 
 func init() {
+
 	log.SetFlags(0)
 	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
 

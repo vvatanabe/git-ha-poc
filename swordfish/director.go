@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/go-jwdk/jobworker"
+	"github.com/vvatanabe/expiremap"
 	"github.com/vvatanabe/git-ha-poc/internal/grpc-proxy/proxy"
 	"github.com/vvatanabe/git-ha-poc/shared/metadata"
 	"github.com/vvatanabe/git-ha-poc/shared/replication"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
+	pbHealth "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type Node struct {
@@ -31,7 +31,10 @@ type Node struct {
 
 func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Context, string) (context.Context, *grpc.ClientConn, func(), error) {
 
-	credentialsCache := make(map[string]credentials.TransportCredentials)
+	connMgr := ClientConnManager{
+		ConnMaxLifetime:    connMaxLifetime,
+		ConnInactiveExpire: connInactiveExpire,
+	}
 
 	return func(ctx context.Context, fullMethodName string) (context.Context, *grpc.ClientConn, func(), error) {
 
@@ -72,20 +75,54 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 
 		log.Printf("found rpc: %s > %s\n", fullMethodName, node.Addr)
 
-		if node.CertFile == "" {
-			conn, err := grpc.DialContext(ctx, node.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
-				grpc.WithInsecure())
-			return ctx, conn, finishedFunc, err
-		}
-		creds, err := getCredentials(credentialsCache, node)
-		if err != nil {
-			log.Printf("failed to create TLS credentials: %v\n", err)
-			return ctx, nil, nil, status.Errorf(codes.FailedPrecondition, "addr TLS is not configured properly")
-		}
-		conn, err := grpc.DialContext(ctx, node.Addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
-			grpc.WithTransportCredentials(creds))
+		conn, err := connMgr.GetConn(node.Addr)
+
 		return ctx, conn, finishedFunc, err
 	}
+}
+
+type ClientConnManager struct {
+	ConnMaxLifetime    time.Duration
+	ConnInactiveExpire time.Duration
+
+	addr2conn     expiremap.Map
+	addr2inactive expiremap.Map
+}
+
+var ErrNodeInactive = errors.New("node inactive")
+
+func (m *ClientConnManager) GetConn(addr string) (*grpc.ClientConn, error) {
+	var conn *grpc.ClientConn
+	if v, ok := m.addr2conn.Load(addr); ok {
+		if _, inactive := m.addr2inactive.Load(v); inactive {
+			return nil, ErrNodeInactive
+		}
+		conn = v.(*grpc.ClientConn)
+	} else {
+		newConn, err := grpc.DialContext(context.Background(), addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+			grpc.WithInsecure())
+		if err != nil {
+			return nil, err
+		}
+		conn = newConn
+		m.addr2conn.Store(addr, conn, expiremap.Expire(m.ConnMaxLifetime), expiremap.ExpiredFunc(func() {
+			err := conn.Close()
+			if err != nil {
+				log.Println("failed to close gRPC conn:", err)
+			}
+		}))
+	}
+
+	health := pbHealth.NewHealthClient(conn)
+
+	resp, err := health.Check(context.Background(), &pbHealth.HealthCheckRequest{Service: ""})
+
+	if err != nil || resp.Status != pbHealth.HealthCheckResponse_SERVING {
+		m.addr2inactive.Store(addr, struct{}{}, expiremap.Expire(m.ConnInactiveExpire))
+		return nil, ErrNodeInactive
+	}
+
+	return conn, nil
 }
 
 type Operation string
