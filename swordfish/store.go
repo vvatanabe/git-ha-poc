@@ -3,10 +3,27 @@ package main
 import (
 	"context"
 	"database/sql"
+
+	"github.com/vvatanabe/git-ha-poc/shared/replication"
 )
 
 type Store struct {
 	db *sql.DB
+}
+
+func (s *Store) ExistsReplicationLog(id replication.GroupID) (bool, error) {
+	row := s.db.QueryRow(`
+select sec_id from jwdk_replication_log where group_id = ? limit 1;
+`, id)
+	var tmp int64
+	err := row.Scan(&tmp)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) GetClusterNameByUserName(name string) (string, error) {

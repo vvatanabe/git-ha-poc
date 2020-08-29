@@ -72,11 +72,23 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 		case Read:
 			var activeConn *grpc.ClientConn
 			for _, node := range nodes {
+
 				conn, err := connMgr.GetConn(node.Addr)
 				if err != nil {
 					log.Println("failed to get conn:", err)
 					continue
 				}
+
+				hasLog, err := store.ExistsReplicationLog(replication.NewGroupID(node.Addr, userName, repoName))
+				if err != nil {
+					log.Println("failed to exists replication log:", err)
+					continue
+				}
+				if hasLog {
+					log.Println("node is currently replicating:", node.Addr)
+					continue
+				}
+
 				activeConn = conn
 			}
 			if activeConn == nil {
@@ -232,8 +244,12 @@ func getFinishedFunc(publisher *jobworker.JobWorker, src *Node, dests []*Node, f
 				log.Println("failed to marshal replication log", err)
 				return
 			}
+			//groupID :=
 			entries = append(entries, &jobworker.EnqueueBatchEntry{
-				ID:      fmt.Sprintf("id-%d", i),
+				ID: fmt.Sprintf("id-%d", i),
+				Metadata: map[string]string{
+					"GroupID": string(replication.NewGroupID(dest.Addr, user, repo)),
+				},
 				Content: string(content),
 			})
 		}

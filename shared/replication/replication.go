@@ -1,5 +1,7 @@
 package replication
 
+import "fmt"
+
 type Log struct {
 	Operation  Operation `json:"operation"`
 	User       string    `json:"user"`
@@ -17,3 +19,9 @@ const (
 )
 
 const LogQueueName = "replication_log"
+
+type GroupID string
+
+func NewGroupID(addr, usr, repo string) GroupID {
+	return GroupID(fmt.Sprintf("%s:%s:%s", addr, usr, repo))
+}
