@@ -6,6 +6,10 @@ Just a proof of concept for a highly available Git servers.
 
 ![overview](https://cacoo.com/diagrams/9BhTPbZUoMwmP1zp-7076D.png)
 
+## Requirements
+
+Go 1.14+
+
 ## Works
 
 ### Build each services
