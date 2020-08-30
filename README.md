@@ -4,7 +4,7 @@ Just a proof of concept for a highly available Git servers.
 
 ## Overview
 
-![overview](https://cacoo.com/diagrams/9BhTPbZUoMwmP1zp-7076D.png)
+![overview](overview.png)
 
 ## Requirements
 
