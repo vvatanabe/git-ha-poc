@@ -8,7 +8,10 @@ import (
 	"log"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
+
+	"google.golang.org/grpc/connectivity"
 
 	"github.com/go-jwdk/jobworker"
 	"github.com/vvatanabe/expiremap"
@@ -134,26 +137,56 @@ type ClientConnManager struct {
 
 var ErrNodeInactive = errors.New("node inactive")
 
+type getter func() (*grpc.ClientConn, error)
+
+func newGetter(addr string) getter {
+
+	var (
+		once sync.Once
+		conn *grpc.ClientConn
+		err  error
+	)
+
+	return func() (*grpc.ClientConn, error) {
+		once.Do(func() {
+			conn, err = grpc.DialContext(context.Background(), addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
+				grpc.WithInsecure())
+		})
+		return conn, err
+	}
+}
+
 func (m *ClientConnManager) GetConn(addr string) (*grpc.ClientConn, error) {
+
+	if _, inactive := m.addr2inactive.Load(addr); inactive {
+		return nil, ErrNodeInactive
+	}
+
 	var conn *grpc.ClientConn
-	if v, ok := m.addr2conn.Load(addr); ok {
-		if _, inactive := m.addr2inactive.Load(v); inactive {
-			return nil, ErrNodeInactive
-		}
-		conn = v.(*grpc.ClientConn)
-	} else {
-		newConn, err := grpc.DialContext(context.Background(), addr, grpc.WithDefaultCallOptions(grpc.ForceCodec(proxy.NewCodec())),
-			grpc.WithInsecure())
-		if err != nil {
-			return nil, err
-		}
-		conn = newConn
-		m.addr2conn.Store(addr, conn, expiremap.Expire(m.ConnMaxLifetime), expiremap.ExpiredFunc(func() {
+
+	actual, _ := m.addr2conn.LoadOrStore(addr,
+		newGetter(addr),
+		expiremap.Expire(m.ConnMaxLifetime),
+		expiremap.ExpiredFunc(func() {
+			if conn != nil {
+				return
+			}
+			if conn.GetState() == connectivity.Connecting {
+				conn.WaitForStateChange(context.Background(), connectivity.Connecting)
+			}
 			err := conn.Close()
 			if err != nil {
 				log.Println("failed to close gRPC conn:", err)
 			}
 		}))
+
+	if actual != nil {
+		getter := actual.(getter)
+		newConn, err := getter()
+		if err != nil {
+			return nil, err
+		}
+		conn = newConn
 	}
 
 	health := pbHealth.NewHealthClient(conn)
