@@ -127,6 +127,95 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 	}
 }
 
+type NodeSelector struct {
+	store   *Store
+	connMgr *ClientConnManager
+}
+
+func (s *NodeSelector) GetWritableNode(ctx context.Context, userName, repoName string) (*grpc.ClientConn, error) {
+
+	clusterName, err := s.store.GetClusterNameByUserName(userName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster name: %w", err)
+	}
+
+	nodes, err := s.store.GetNodesByClusterName(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+	if len(nodes) == 0 {
+		return nil, errors.New("no nodes")
+	}
+
+	shuffle(nodes)
+
+	var (
+		primaryNode    *Node
+		secondaryNodes []*Node
+	)
+	for _, node := range nodes {
+		if node.Writable {
+			primaryNode = node
+		} else {
+			secondaryNodes = append(secondaryNodes, node)
+		}
+	}
+	if primaryNode == nil {
+		return nil, errors.New("could not select writer node")
+	}
+	conn, err := s.connMgr.GetConn(primaryNode.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("could not select writer node: %w", err)
+	}
+	return conn, err
+}
+
+func (s *NodeSelector) GetReadableNode(ctx context.Context, userName, repoName string) (*grpc.ClientConn, error) {
+
+	clusterName, err := s.store.GetClusterNameByUserName(userName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster name: %w", err)
+	}
+
+	nodes, err := s.store.GetNodesByClusterName(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+	if len(nodes) == 0 {
+		return nil, errors.New("no nodes")
+	}
+
+	shuffle(nodes)
+
+	var activeConn *grpc.ClientConn
+	for _, node := range nodes {
+
+		conn, err := s.connMgr.GetConn(node.Addr)
+		if err != nil {
+			log.Println("failed to get conn:", err)
+			continue
+		}
+
+		hasLog, err := s.store.ExistsReplicationLog(replication.NewGroupID(node.Addr, userName, repoName))
+		if err != nil {
+			log.Println("failed to exists replication log:", err)
+			continue
+		}
+		if hasLog {
+			log.Println("node is currently replicating:", node.Addr)
+			continue
+		}
+
+		activeConn = conn
+	}
+	if activeConn == nil {
+		return nil, errors.New("could not select node")
+	}
+
+	return activeConn, nil
+
+}
+
 type ClientConnManager struct {
 	ConnMaxLifetime    time.Duration
 	ConnInactiveExpire time.Duration
