@@ -22,8 +22,10 @@ INSERT INTO node VALUES ('tadpole-5', 'goldsaucer', 'tadpole-5-b:50051', 0, 1);
 INSERT INTO node VALUES ('tadpole-6', 'goldsaucer', 'tadpole-6-a:50051', 0, 1);
 
 CREATE TABLE IF NOT EXISTS user (
-        name            VARCHAR(255) NOT NULL,
-        cluster_name    VARCHAR(255) NOT NULL,
+        name                  VARCHAR(255) NOT NULL,
+        encrypted_password    BINARY(60) NOT NULL,
+        ssh_key               TEXT NOT NULL,
+        cluster_name          VARCHAR(255) NOT NULL,
         UNIQUE(name),
         CONSTRAINT fk_user_cluster_name FOREIGN KEY (cluster_name) REFERENCES cluster (name)
 );
