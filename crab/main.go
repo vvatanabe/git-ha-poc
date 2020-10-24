@@ -11,14 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spf13/viper"
-
-	"github.com/pires/go-proxyproto"
-
-	"github.com/spf13/cobra"
-
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/pires/go-proxyproto"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	pbRepository "github.com/vvatanabe/git-ha-poc/proto/repository"
 	pbSmart "github.com/vvatanabe/git-ha-poc/proto/smart"
 	"github.com/vvatanabe/git-ha-poc/shared/interceptor"
@@ -41,6 +38,7 @@ const (
 	flagNameDSN                = "dsn"
 	flagNameShutdownTimeout    = "shutdown_timeout"
 	flagNameProxyProtocol      = "proxy_protocol"
+	flagNameGitRPCAddr         = "git_rpc_addr"
 )
 
 type Config struct {
@@ -82,12 +80,14 @@ func main() {
 	flags.String(flagNameDSN, "", fmt.Sprintf("database source name [%s]", getEnvVarName(flagNameDSN)))
 	flags.DurationP(flagNameShutdownTimeout, "", defaultShutdownTimeout, fmt.Sprintf("process shutdown timeout [%s]", getEnvVarName(flagNameShutdownTimeout)))
 	flags.Bool(flagNameProxyProtocol, false, fmt.Sprintf("use proxy protocol [%s]", getEnvVarName(flagNameProxyProtocol)))
+	flags.Bool(flagNameGitRPCAddr, false, fmt.Sprintf("git rpc addr [%s]", getEnvVarName(flagNameGitRPCAddr)))
 
 	_ = viper.BindPFlag(flagNamePort, flags.Lookup(flagNamePort))
 	_ = viper.BindPFlag(flagNameTCPHealthCheckPort, flags.Lookup(flagNameTCPHealthCheckPort))
 	_ = viper.BindPFlag(flagNameDSN, flags.Lookup(flagNameDSN))
 	_ = viper.BindPFlag(flagNameShutdownTimeout, flags.Lookup(flagNameShutdownTimeout))
 	_ = viper.BindPFlag(flagNameProxyProtocol, flags.Lookup(flagNameProxyProtocol))
+	_ = viper.BindPFlag(flagNameGitRPCAddr, flags.Lookup(flagNameGitRPCAddr))
 
 	cobra.OnInitialize(func() {
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
