@@ -2,128 +2,212 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	dbconn "github.com/go-jwdk/db-connector"
+	_ "github.com/go-jwdk/aws-sqs-connector"
+	_ "github.com/go-jwdk/db-connector"
 	"github.com/go-jwdk/jobworker"
-	"github.com/go-jwdk/mysql-connector"
+	"github.com/pires/go-proxyproto"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/vvatanabe/git-ha-poc/internal/grpc-proxy/proxy"
-	"github.com/vvatanabe/git-ha-poc/shared/replication"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/encoding"
 )
 
 const (
-	appName            = "swordfish"
-	port               = 50051
+	cmdName   = "git-proxy"
+	envPrefix = "git_proxy"
+
+	defaultPort            = 50051
+	defaultShutdownTimeout = 30 * time.Second
+
+	flagNamePort               = "port"
+	flagNameTCPHealthCheckPort = "tcp_health_check_port"
+	flagNameDSN                = "dsn"
+	flagNameShutdownTimeout    = "shutdown_timeout"
+	flagNameProxyProtocol      = "proxy_protocol"
+
+	flagNameReplicationQueueSource    = "replication_queue_source"
+	flagNameReplicationQueueAWSRegion = "replication_queue_aws_region"
+	flagNameReplicationQueueDSN       = "replication_queue_dsn"
+
 	connMaxLifetime    = 10 * time.Second
 	connInactiveExpire = 3 * time.Second
 )
 
+type Config struct {
+	Port                      int           `mapstructure:"port"`
+	TCPHealthCheckPort        int           `mapstructure:"tcp_health_check_port"`
+	DSN                       string        `mapstructure:"dsn"`
+	ShutdownTimeout           time.Duration `mapstructure:"shutdown_timeout"`
+	ProxyProtocol             bool          `mapstructure:"proxy_protocol"`
+	ReplicationQueueSource    string        `mapstructure:"replication_queue_source"`
+	ReplicationQueueAWSRegion string        `mapstructure:"replication_queue_aws_region"`
+	ReplicationQueueDSN       string        `mapstructure:"replication_queue_dsn"`
+}
+
 var (
-	dsn      string
-	certFile string
-	keyFile  string
+	config Config
+	sugar  *zap.SugaredLogger
 )
 
 func init() {
-
-	log.SetFlags(0)
-	log.SetPrefix(fmt.Sprintf("[%s] ", appName))
-
-	dsn = os.Getenv("DSN")
-	certFile = os.Getenv("CERT_FILE")
-	keyFile = os.Getenv("KEY_FILE")
+	encoderCfg := zap.NewProductionEncoderConfig()
+	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	logger := zap.New(zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderCfg),
+		zapcore.Lock(os.Stdout),
+		zap.NewAtomicLevel(),
+	))
+	sugar = logger.Sugar()
 }
 
 func main() {
+	defer sugar.Sync() // flushes buffer, if any
 
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		log.Fatalln("failed to open conn of mysql", err)
+	root := &cobra.Command{
+		Use: cmdName,
+		Run: run,
 	}
-	store := &Store{db: db}
 
-	jwConn, err := mysql.Open(&mysql.Config{
-		DSN: dsn,
+	flags := root.PersistentFlags()
+	flags.Int(flagNamePort, defaultPort, fmt.Sprintf("port number for HTTP [%s]", getEnvVarName(flagNamePort)))
+	flags.Int(flagNameTCPHealthCheckPort, 0, fmt.Sprintf("port number for TCP Health Check [%s] (listen only when you specify port)", getEnvVarName(flagNameTCPHealthCheckPort)))
+	flags.String(flagNameDSN, "", fmt.Sprintf("database source name [%s]", getEnvVarName(flagNameDSN)))
+	flags.DurationP(flagNameShutdownTimeout, "", defaultShutdownTimeout, fmt.Sprintf("process shutdown timeout [%s]", getEnvVarName(flagNameShutdownTimeout)))
+	flags.Bool(flagNameProxyProtocol, false, fmt.Sprintf("use proxy protocol [%s]", getEnvVarName(flagNameProxyProtocol)))
+	flags.String(flagNameReplicationQueueSource, "", fmt.Sprintf("replication queue source name value: sqs or mysql [%s]", getEnvVarName(flagNameReplicationQueueSource)))
+	flags.String(flagNameReplicationQueueAWSRegion, "", fmt.Sprintf("replication queue aws region  [%s]", getEnvVarName(flagNameReplicationQueueAWSRegion)))
+	flags.String(flagNameReplicationQueueDSN, "", fmt.Sprintf("replication queue dsn  [%s]", getEnvVarName(flagNameReplicationQueueDSN)))
+
+	_ = viper.BindPFlag(flagNamePort, flags.Lookup(flagNamePort))
+	_ = viper.BindPFlag(flagNameTCPHealthCheckPort, flags.Lookup(flagNameTCPHealthCheckPort))
+	_ = viper.BindPFlag(flagNameDSN, flags.Lookup(flagNameDSN))
+	_ = viper.BindPFlag(flagNameShutdownTimeout, flags.Lookup(flagNameShutdownTimeout))
+	_ = viper.BindPFlag(flagNameProxyProtocol, flags.Lookup(flagNameProxyProtocol))
+	_ = viper.BindPFlag(flagNameReplicationQueueSource, flags.Lookup(flagNameReplicationQueueSource))
+	_ = viper.BindPFlag(flagNameReplicationQueueAWSRegion, flags.Lookup(flagNameReplicationQueueAWSRegion))
+	_ = viper.BindPFlag(flagNameReplicationQueueDSN, flags.Lookup(flagNameReplicationQueueDSN))
+
+	cobra.OnInitialize(func() {
+		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+		viper.SetEnvPrefix(envPrefix)
+		viper.AutomaticEnv()
+		if err := viper.Unmarshal(&config); err != nil {
+			sugar.Fatal("failed to unmarshal config:", err)
+		}
+	})
+
+	if err := root.Execute(); err != nil {
+		sugar.Fatal("failed to run cmd:", err)
+	}
+}
+
+func getEnvVarName(s string) string {
+	return strings.ToUpper(envPrefix + "_" + s)
+}
+
+func run(c *cobra.Command, args []string) {
+
+	sugar.Infof("config: %#v", config)
+
+	ready := make(chan struct{}, 1)
+	if config.TCPHealthCheckPort > 0 {
+		go func() {
+			<-ready
+			tcpLis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.TCPHealthCheckPort))
+			if err != nil {
+				sugar.Fatal("failed to listen tcp:", err)
+			}
+			sugar.Info("start to serve on tcp port:", config.TCPHealthCheckPort)
+			for {
+				conn, err := tcpLis.Accept()
+				if err != nil {
+					sugar.Error("failed to accept tcp:", err)
+					continue
+				}
+				conn.Close()
+			}
+		}()
+	}
+
+	store, err := newStore(config.DSN)
+	if err != nil {
+		sugar.Fatal("failed to create store:", err)
+	}
+
+	jwConn, err := jobworker.Open(config.ReplicationQueueSource, map[string]interface{}{
+		"Region": config.ReplicationQueueAWSRegion,
+		"DSN":    config.ReplicationQueueDSN,
 	})
 	if err != nil {
-		log.Fatalln("failed to open conn of job queue", err)
+		sugar.Fatal("failed to open queue source connector:", err)
 	}
-	jwConn.SetLoggerFunc(log.Println)
-
-	_, err = jwConn.CreateQueue(context.Background(), &dbconn.CreateQueueInput{
-		Name:              replication.LogQueueName,
-		DelaySeconds:      2,
-		VisibilityTimeout: 60,
-		MaxReceiveCount:   10,
-		DeadLetterTarget:  "",
-	})
-	if err != nil {
-		log.Fatalln("failed to create replication log queue", err)
-	}
+	jwConn.SetLoggerFunc(sugar.Info)
 
 	publisher, err := jobworker.New(&jobworker.Setting{
 		Primary:                    jwConn,
 		DeadConnectorRetryInterval: 3,
-		LoggerFunc:                 log.Println,
+		LoggerFunc:                 sugar.Info,
 	})
 	if err != nil {
 		log.Fatalln("failed to init replication worker", err)
 	}
 	defer publisher.Shutdown(context.Background())
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	srv := newServer(publisher, store)
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.Port))
 	if err != nil {
-		log.Fatalln("failed to listen", err)
+		sugar.Fatal("failed to listen grpc:", err)
 	}
 
-	server := newServer(publisher, store)
+	if config.ProxyProtocol {
+		lis = &proxyproto.Listener{Listener: lis}
+	}
 
 	go func() {
-		if err := server.Serve(lis); err != nil {
-			log.Println("failed to serve", err)
+		sugar.Info("start to serve on port:", config.Port)
+		ready <- struct{}{}
+		if err := srv.Serve(lis); err != grpc.ErrServerStopped && err != nil {
+			sugar.Error("failed to serve:", err)
 		}
 	}()
 
-	sigint := make(chan os.Signal, 1)
-	signal.Notify(sigint, os.Interrupt, syscall.SIGTERM)
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 
-	<-sigint
+	<-done
 
-	log.Println("received a signal")
+	sugar.Info("received a signal")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	go func() {
 		<-ctx.Done()
-		log.Println("timeout shutdown", err)
-		server.Stop()
+		sugar.Info("timeout shutdown", err)
+		srv.Stop()
 	}()
-	server.GracefulStop()
-	log.Println("completed shutdown")
+	srv.GracefulStop()
+
+	sugar.Info("completed shutdown")
 }
 
 func newServer(publisher *jobworker.JobWorker, store *Store) *grpc.Server {
-	var opts []grpc.ServerOption
-
-	opts = append(opts, grpc.CustomCodec(proxy.NewCodec()),
-		grpc.UnknownServiceHandler(proxy.TransparentHandler(getDirector(publisher, store))))
-
-	if certFile != "" && keyFile != "" {
-		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
-		if err != nil {
-			log.Fatalf("Failed to generate credentials: %v\n", err)
-		}
-		opts = append(opts, grpc.Creds(creds))
-	}
-
-	return grpc.NewServer(opts...)
+	encoding.RegisterCodec(proxy.NewCodec())
+	director := getDirector(publisher, store)
+	transparent := proxy.TransparentHandler(director)
+	unknown := grpc.UnknownServiceHandler(transparent)
+	return grpc.NewServer(unknown)
 }

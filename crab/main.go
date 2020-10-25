@@ -170,7 +170,7 @@ func run(c *cobra.Command, args []string) {
 	}
 
 	go func() {
-		sugar.Info("start to serve on h port:", config.Port)
+		sugar.Info("start to serve on port:", config.Port)
 		ready <- struct{}{}
 		if err := srv.Serve(lis); err != http.ErrServerClosed && err != nil {
 			sugar.Error("failed to serve:", err)

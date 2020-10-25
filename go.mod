@@ -3,6 +3,8 @@ module github.com/vvatanabe/git-ha-poc
 go 1.14
 
 require (
+	github.com/aws/aws-sdk-go v1.35.14 // indirect
+	github.com/go-jwdk/aws-sqs-connector v0.3.0
 	github.com/go-jwdk/db-connector v0.2.4
 	github.com/go-jwdk/jobworker v0.3.0
 	github.com/go-jwdk/mysql-connector v0.1.4

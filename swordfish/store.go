@@ -11,6 +11,14 @@ type Store struct {
 	db *sql.DB
 }
 
+func newStore(dsn string) (*Store, error) {
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
 func (s *Store) ExistsReplicationLog(id replication.GroupID) (bool, error) {
 	row := s.db.QueryRow(`
 select sec_id from jwdk_replication_log where group_id = ? limit 1;
