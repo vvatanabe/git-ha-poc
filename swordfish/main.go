@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -161,7 +160,7 @@ func run(c *cobra.Command, args []string) {
 		LoggerFunc:                 sugar.Info,
 	})
 	if err != nil {
-		log.Fatalln("failed to init replication worker", err)
+		sugar.Fatal("failed to init replication worker", err)
 	}
 	defer publisher.Shutdown(context.Background())
 

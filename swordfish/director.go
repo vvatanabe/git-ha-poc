@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -78,17 +77,17 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 
 				conn, err := connMgr.GetConn(node.Addr)
 				if err != nil {
-					log.Println("failed to get conn:", err)
+					sugar.Info("failed to get conn:", err)
 					continue
 				}
 
 				hasLog, err := store.ExistsReplicationLog(replication.NewGroupID(node.Addr, userName, repoName))
 				if err != nil {
-					log.Println("failed to exists replication log:", err)
+					sugar.Info("failed to exists replication log:", err)
 					continue
 				}
 				if hasLog {
-					log.Println("node is currently replicating:", node.Addr)
+					sugar.Info("node is currently replicating:", node.Addr)
 					continue
 				}
 
@@ -97,7 +96,7 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 			if activeConn == nil {
 				return ctx, nil, nil, errors.New("could not select node")
 			}
-			log.Printf("found reader node: %s > %s\n", fullMethodName, activeConn.Target())
+			sugar.Infof("found reader node: %s > %s\n", fullMethodName, activeConn.Target())
 			return ctx, activeConn, func() {}, err
 		case Write:
 			var (
@@ -118,7 +117,7 @@ func getDirector(publisher *jobworker.JobWorker, store *Store) func(context.Cont
 			if err != nil {
 				return ctx, nil, nil, fmt.Errorf("could not select writer node: %w", err)
 			}
-			log.Printf("found writer node: %s > %s\n", fullMethodName, conn.Target())
+			sugar.Infof("found writer node: %s > %s\n", fullMethodName, conn.Target())
 			finishedFunc := getFinishedFunc(publisher, primaryNode, secondaryNodes, fullMethodName, clusterName, userName, repoName)
 			return ctx, conn, finishedFunc, err
 		}
@@ -192,17 +191,17 @@ func (s *NodeSelector) GetReadableNode(ctx context.Context, userName, repoName s
 
 		conn, err := s.connMgr.GetConn(node.Addr)
 		if err != nil {
-			log.Println("failed to get conn:", err)
+			sugar.Info("failed to get conn:", err)
 			continue
 		}
 
 		hasLog, err := s.store.ExistsReplicationLog(replication.NewGroupID(node.Addr, userName, repoName))
 		if err != nil {
-			log.Println("failed to exists replication log:", err)
+			sugar.Info("failed to exists replication log:", err)
 			continue
 		}
 		if hasLog {
-			log.Println("node is currently replicating:", node.Addr)
+			sugar.Info("node is currently replicating:", node.Addr)
 			continue
 		}
 
@@ -265,7 +264,7 @@ func (m *ClientConnManager) GetConn(addr string) (*grpc.ClientConn, error) {
 			}
 			err := conn.Close()
 			if err != nil {
-				log.Println("failed to close gRPC conn:", err)
+				sugar.Info("failed to close gRPC conn:", err)
 			}
 		}))
 
@@ -345,7 +344,7 @@ func getFinishedFunc(publisher *jobworker.JobWorker, src *Node, dests []*Node, f
 
 		t := getReplicationOperation(fullMethodName)
 		if t == "" {
-			log.Printf("not found replication operation: %s\n", fullMethodName)
+			sugar.Infof("not found replication operation: %s\n", fullMethodName)
 			return
 		}
 
@@ -363,10 +362,9 @@ func getFinishedFunc(publisher *jobworker.JobWorker, src *Node, dests []*Node, f
 				Cluster:    cluster,
 			})
 			if err != nil {
-				log.Println("failed to marshal replication log", err)
+				sugar.Info("failed to marshal replication log", err)
 				return
 			}
-			//groupID :=
 			entries = append(entries, &jobworker.EnqueueBatchEntry{
 				ID: fmt.Sprintf("id-%d", i),
 				Metadata: map[string]string{
@@ -382,9 +380,9 @@ func getFinishedFunc(publisher *jobworker.JobWorker, src *Node, dests []*Node, f
 		})
 		if err != nil {
 			if out != nil {
-				log.Printf("failed to enqueue replication log: %s, %s\n", err, out.Failed)
+				sugar.Infof("failed to enqueue replication log: %s, %s\n", err, out.Failed)
 			} else {
-				log.Printf("failed to enqueue replication log: %s\n", err)
+				sugar.Infof("failed to enqueue replication log: %s\n", err)
 			}
 		}
 	}
