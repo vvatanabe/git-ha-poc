@@ -13,8 +13,8 @@ import (
 	"time"
 
 	_ "github.com/go-jwdk/aws-sqs-connector"
-	_ "github.com/go-jwdk/db-connector"
 	"github.com/go-jwdk/jobworker"
+	_ "github.com/go-jwdk/mysql-connector"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	pbReplication "github.com/vvatanabe/git-ha-poc/proto/replication"
