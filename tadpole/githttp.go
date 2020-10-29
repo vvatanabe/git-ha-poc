@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -27,7 +26,7 @@ func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
+		sugar.Info("failed to get pipe that will be connected to the command's standard input. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -35,7 +34,7 @@ func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
+		sugar.Info("failed to get pipe that will be connected to the command's standard output. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -43,14 +42,14 @@ func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest
 
 	err = cmd.Start()
 	if err != nil {
-		log.Println("failed to starts the specified command. ", err.Error())
+		sugar.Info("failed to starts the specified command. ", err.Error())
 		// TODO define error
 		return err
 	}
 	defer cmd.Wait()
 
 	if _, err := stdin.Write(request.Data); err != nil {
-		log.Println("failed to write the request body to standard input. ", err.Error())
+		sugar.Info("failed to write the request body to standard input. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -84,7 +83,7 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 
 	c, err := stream.Recv()
 	if err != nil {
-		log.Println("failed to recv stream first", err)
+		sugar.Info("failed to recv stream first", err)
 		return err
 	}
 
@@ -98,7 +97,7 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard input. ", err.Error())
+		sugar.Info("failed to get pipe that will be connected to the command's standard input. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -106,7 +105,7 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Println("failed to get pipe that will be connected to the command's standard output. ", err.Error())
+		sugar.Info("failed to get pipe that will be connected to the command's standard output. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -114,7 +113,7 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 
 	err = cmd.Start()
 	if err != nil {
-		log.Println("failed to starts the specified command. ", err.Error())
+		sugar.Info("failed to starts the specified command. ", err.Error())
 		// TODO define error
 		return err
 	}
@@ -132,7 +131,7 @@ func (s *SmartProtocolService) PostReceivePack(stream pbSmart.SmartProtocolServi
 
 	_, err = io.Copy(stdin, sr)
 	if err != nil {
-		log.Println("failed to write stdin ", err)
+		sugar.Info("failed to write stdin ", err)
 		return err
 	}
 

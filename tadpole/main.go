@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -200,12 +199,12 @@ func run(c *cobra.Command, args []string) {
 		go func() {
 			lis, err := net.Listen("tcp", fmt.Sprintf(":%d", defaultSSHPort))
 			if err != nil {
-				log.Fatalf("failed to listen: %v\n", err)
+				sugar.Fatalf("failed to listen: %v\n", err)
 			}
 			s := newSSHServer(&config)
-			log.Printf("start internal ssh server on port %d\n", defaultSSHPort)
+			sugar.Infof("start internal ssh server on port %d\n", defaultSSHPort)
 			if err := s.Serve(lis); err != nil {
-				log.Fatalf("failed to serve: %v\n", err)
+				sugar.Fatalf("failed to serve: %v\n", err)
 			}
 		}()
 	}

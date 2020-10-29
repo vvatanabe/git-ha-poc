@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"path/filepath"
 
 	pbSSH "github.com/vvatanabe/git-ha-poc/proto/ssh"
@@ -17,7 +16,7 @@ func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_Post
 
 	c, err := stream.Recv()
 	if err != nil {
-		log.Println("failed to recv stream first", err)
+		sugar.Info("failed to recv stream first", err)
 		return err
 	}
 
@@ -49,7 +48,7 @@ func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_Post
 
 	err = gitssh.GitUploadPack(stream.Context(), s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
-		log.Println("failed to GitUploadPack", err)
+		sugar.Info("failed to GitUploadPack", err)
 		return err
 	}
 
@@ -60,7 +59,7 @@ func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_Pos
 
 	c, err := stream.Recv()
 	if err != nil {
-		log.Println("failed to recv stream first", err)
+		sugar.Info("failed to recv stream first", err)
 		return err
 	}
 
@@ -92,7 +91,7 @@ func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_Pos
 
 	err = gitssh.GitReceivePack(stream.Context(), s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
-		log.Println("failed to GitReceivePack", err)
+		sugar.Info("failed to GitReceivePack", err)
 		return err
 	}
 	return nil

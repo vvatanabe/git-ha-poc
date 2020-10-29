@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"os/exec"
 	"path"
@@ -46,21 +45,21 @@ func (r *ReplicationService) SyncRepository(ctx context.Context, request *pbRepl
 	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
 	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
 	if err != nil {
-		log.Println("failed to add remote ", err)
+		sugar.Info("failed to add remote ", err)
 		return nil, err
 	}
 
 	defer func() {
 		e := removeRemote(r.BinPath, remoteName, repoPath)
 		if e != nil {
-			log.Println("failed to remove remote ", err)
+			sugar.Info("failed to remove remote ", err)
 			err = e
 		}
 	}()
 
 	err = fetchInternal(r.BinPath, remoteName, repoPath)
 	if err != nil {
-		log.Println("failed to fetch internal ", err)
+		sugar.Info("failed to fetch internal ", err)
 		return nil, err
 	}
 

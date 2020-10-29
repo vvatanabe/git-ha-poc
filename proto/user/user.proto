@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package repository;
+
+option go_package = "github.com/vvatanabe/git-ha-poc/proto/user";
+
+message CreateUserRequest {
+  string username = 1;
+  bytes encrypted_password = 2;
+  string ssh_key = 3;
+}
+
+message CreateUserResponse {
+}
+
+
+service UserService {
+  rpc CreateUser (CreateUserRequest) returns (CreateUserResponse);
+}

@@ -160,7 +160,7 @@ func run(c *cobra.Command, args []string) {
 		LoggerFunc:                 sugar.Info,
 	})
 	if err != nil {
-		sugar.Fatal("failed to init replication worker", err)
+		sugar.Fatal("failed to init replication log publisher", err)
 	}
 	defer publisher.Shutdown(context.Background())
 
