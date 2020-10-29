@@ -47,7 +47,7 @@ func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_Post
 		},
 	}
 
-	err = gitssh.GitUploadPack(s.ShellPath, repoPath, rw, rwe)
+	err = gitssh.GitUploadPack(stream.Context(), s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
 		log.Println("failed to GitUploadPack", err)
 		return err
@@ -90,7 +90,7 @@ func (s *SSHProtocolService) PostReceivePack(stream pbSSH.SSHProtocolService_Pos
 		},
 	}
 
-	err = gitssh.GitReceivePack(s.ShellPath, repoPath, rw, rwe)
+	err = gitssh.GitReceivePack(stream.Context(), s.ShellPath, repoPath, rw, rwe)
 	if err != nil {
 		log.Println("failed to GitReceivePack", err)
 		return err

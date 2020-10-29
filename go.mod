@@ -16,7 +16,7 @@ require (
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.6.1
 	github.com/vvatanabe/expiremap v0.10.0
-	github.com/vvatanabe/git-ssh-test-server v0.4.0
+	github.com/vvatanabe/git-ssh-test-server v0.5.0
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a

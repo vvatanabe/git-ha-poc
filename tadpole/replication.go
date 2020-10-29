@@ -16,6 +16,7 @@ import (
 type ReplicationService struct {
 	RootPath string
 	BinPath  string
+	SSHPort  int
 }
 
 func (r *ReplicationService) CreateRepository(ctx context.Context, request *pbReplication.CreateRepositoryRequest) (*pbReplication.CreateRepositoryResponse, error) {
@@ -41,7 +42,7 @@ func (r *ReplicationService) CreateRepository(ctx context.Context, request *pbRe
 func (r *ReplicationService) SyncRepository(ctx context.Context, request *pbReplication.SyncRepositoryRequest) (response *pbReplication.SyncRepositoryResponse, err error) {
 	remoteName := fmt.Sprintf("internal-%s", RandomString(10))
 	remoteURL := fmt.Sprintf("ssh://git@%s:%d/%s/%s.git",
-		request.RemoteAddr, sshPort, request.Repository.User, request.Repository.Repo)
+		request.RemoteAddr, r.SSHPort, request.Repository.User, request.Repository.Repo)
 	repoPath := path.Join(r.RootPath, request.Repository.User, request.Repository.Repo+".git")
 	err = addRemote(r.BinPath, remoteName, remoteURL, repoPath)
 	if err != nil {
