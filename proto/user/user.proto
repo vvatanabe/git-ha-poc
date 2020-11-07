@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package repository;
+package user;
 
 option go_package = "github.com/vvatanabe/git-ha-poc/proto/user";
 

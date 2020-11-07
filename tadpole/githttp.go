@@ -15,6 +15,7 @@ import (
 type SmartProtocolService struct {
 	RootPath string
 	BinPath  string
+	pbSmart.UnimplementedSmartProtocolServiceServer
 }
 
 func (s *SmartProtocolService) PostUploadPack(request *pbSmart.UploadPackRequest, stream pbSmart.SmartProtocolService_PostUploadPackServer) error {

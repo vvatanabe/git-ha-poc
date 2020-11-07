@@ -16,6 +16,7 @@ type ReplicationService struct {
 	RootPath string
 	BinPath  string
 	SSHPort  int
+	pbReplication.UnimplementedReplicationServiceServer
 }
 
 func (r *ReplicationService) CreateRepository(ctx context.Context, request *pbReplication.CreateRepositoryRequest) (*pbReplication.CreateRepositoryResponse, error) {

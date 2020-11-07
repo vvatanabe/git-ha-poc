@@ -30,7 +30,7 @@ func NewUserServiceClient(cc grpc.ClientConnInterface) UserServiceClient {
 
 func (c *userServiceClient) CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error) {
 	out := new(CreateUserResponse)
-	err := c.cc.Invoke(ctx, "/repository.UserService/CreateUser", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/user.UserService/CreateUser", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func _UserService_CreateUser_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/repository.UserService/CreateUser",
+		FullMethod: "/user.UserService/CreateUser",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(UserServiceServer).CreateUser(ctx, req.(*CreateUserRequest))
@@ -84,7 +84,7 @@ func _UserService_CreateUser_Handler(srv interface{}, ctx context.Context, dec f
 }
 
 var _UserService_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "repository.UserService",
+	ServiceName: "user.UserService",
 	HandlerType: (*UserServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

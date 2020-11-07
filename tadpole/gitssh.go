@@ -10,6 +10,7 @@ import (
 type SSHProtocolService struct {
 	RootPath  string
 	ShellPath string
+	pbSSH.UnimplementedSSHProtocolServiceServer
 }
 
 func (s *SSHProtocolService) PostUploadPack(stream pbSSH.SSHProtocolService_PostUploadPackServer) error {

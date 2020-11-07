@@ -12,6 +12,7 @@ import (
 type RepositoryService struct {
 	RootPath string
 	BinPath  string
+	pbRepository.UnimplementedRepositoryServiceServer
 }
 
 func (r *RepositoryService) CreateRepository(ctx context.Context, request *pbRepository.CreateRepositoryRequest) (*pbRepository.CreateRepositoryResponse, error) {
